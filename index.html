@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zahlensender-Toolkit</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<h1>ZAHLENSENDER-TOOLKIT</h1>
+<div class="sub">
+  Ton-Encoder und -Decoder für eigene Zahlensender-artige Formate (CB/Kurzwelle, AM/FM/SSB),
+  angelehnt an die ENIGMA-Klassifizierungen XPA2 / XPB / P07. Siehe README.md für Hintergrund und Quellen.
+</div>
+
+<nav class="tabs">
+  <a href="index.html" class="active">Start</a>
+  <a href="encode.html">Encoder</a>
+  <a href="decode.html">Decoder</a>
+</nav>
+
+<div class="panel" style="max-width:1040px;margin:0 auto;">
+  <label style="margin-top:0;">Encoder</label>
+  <div class="hint" style="margin-bottom:14px;">Erzeugt Ruf, ID/Gruppenanzahl und Zahlengruppen als Ton-Sequenz, spielbar oder als WAV exportierbar.</div>
+  <label>Decoder</label>
+  <div class="hint" style="margin-bottom:14px;">Nimmt über Mikrofon auf oder liest eine Audiodatei ein, erkennt Ruf/ID/Daten automatisch — inkl. Modus für sehr schwache Signale.</div>
+  <div class="btnrow">
+    <button onclick="location.href='encode.html'">→ Zum Encoder</button>
+    <button class="secondary" onclick="location.href='decode.html'">→ Zum Decoder</button>
+  </div>
+</div>
+
+<script src="js/auth.js"></script>
+</body>
+</html>

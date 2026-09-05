@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Decoder — Zahlensender-Toolkit</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<h1>DECODER</h1>
+<div class="sub">
+  Nimmt über Mikrofon auf oder liest eine Audiodatei ein, findet den 3-Ton-Ruf automatisch (Onset-Erkennung)
+  und decodiert ID, Gruppenanzahl und Zahlengruppen. „Sehr schwaches Signal“ sucht zusätzlich über
+  Zeitversatz/Drift und zeigt eine Konfidenz pro Symbol.
+</div>
+
+<nav class="tabs">
+  <a href="index.html">Start</a>
+  <a href="encode.html">Encoder</a>
+  <a href="decode.html" class="active">Decoder</a>
+</nav>
+
+<div class="rack">
+  <div class="panel">
+    <label style="margin-top:0;">Format-Stil (muss zum Sender passen)</label>
+    <select id="style">
+      <option value="simple">Einfach — robuster 10-Ton-Code</option>
+      <option value="xpa2">XPA2-Stil</option>
+      <option value="xpb">XPB-Stil</option>
+      <option value="p07">P07-Stil (Vorschau)</option>
+    </select>
+
+    <label>Baudrate (muss zum Sender passen)</label>
+    <select id="baud">
+      <option value="5">5 Bd</option>
+      <option value="7.5" selected>7.5 Bd</option>
+      <option value="16">16 Bd</option>
+    </select>
+
+    <label>Ruf/Intro (muss zum Sender passen)</label>
+    <select id="callPattern">
+      <option value="threeToneNumbers">3-Ton-Nummernstation (klassisch)</option>
+      <option value="xpa2">XPA2-Ruf</option>
+      <option value="xpb">XPB-Ruf</option>
+      <option value="p07">P07-Ruf (Vorschau)</option>
+    </select>
+    <label>Ruf-Länge (Wiederholungen, muss zum Sender passen)</label>
+    <input id="callRepeats" type="number" min="1" max="10" value="3">
+
+    <label>OTP-Entschlüsselung <input type="checkbox" id="otpToggle" style="width:auto;vertical-align:middle;"></label>
+    <div class="hint">An: Ziffern werden mit Pad rückgerechnet und über Alphabet in Text zurückverwandelt. Aus: rohe Ziffern anzeigen.</div>
+    <div id="otpBlock" style="display:none;">
+      <label>Pad / Schlüssel (Ziffern, gleiches Pad wie beim Sender)</label>
+      <input id="pad" type="text" inputmode="numeric" placeholder="z. B. 4471928305...">
+    </div>
+
+    <label>Empfangs-Modus</label>
+    <select id="mode">
+      <option value="normal">Normal — sauberes Signal</option>
+      <option value="weak">Sehr schwaches Signal — robuste Suche + Konfidenz</option>
+    </select>
+    <div class="hint">Robust-Modus probiert mehrere Zeitversätze pro Symbol (Clock-Drift-Toleranz) und markiert unsichere Symbole mit „?“.</div>
+
+    <label>Quelle: Audiodatei</label>
+    <input type="file" id="fileInput" accept="audio/*">
+
+    <label>Quelle: Mikrofon</label>
+    <div class="btnrow">
+      <button id="recBtn">● Aufnahme starten</button>
+      <button id="stopBtn" class="secondary" disabled>■ Stopp &amp; decodieren</button>
+    </div>
+    <div class="hint" id="recStatus"></div>
+  </div>
+
+  <div class="panel">
+    <label style="margin-top:0;">Wellenform</label>
+    <canvas id="scope" width="900" height="130"></canvas>
+
+    <label>Ergebnis</label>
+    <div class="readout" id="result">Noch keine Aufnahme/Datei geladen.</div>
+
+    <label>Details / Log</label>
+    <div class="readout" id="log">—</div>
+  </div>
+</div>
+
+<script src="js/auth.js"></script>
+<script src="js/engine.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+let audioCtx = null;
+
+function updateOtpUi(){
+  $("otpBlock").style.display = $("otpToggle").checked ? "block" : "none";
+}
+$("otpToggle").addEventListener("change", updateOtpUi);
+updateOtpUi();
+
+function drawScope(buf){
+  const canvas = $("scope");
+  const c = canvas.getContext("2d");
+  c.clearRect(0,0,canvas.width,canvas.height);
+  c.strokeStyle = "#5ee08c";
+  c.lineWidth = 1;
+  const data = buf.getChannelData(0);
+  const step = Math.max(1, Math.ceil(data.length/canvas.width));
+  c.beginPath();
+  for(let x=0;x<canvas.width;x++){
+    let min=1,max=-1;
+    for(let i=0;i<step;i++){
+      const idx = x*step+i;
+      if(idx>=data.length) break;
+      const v = data[idx];
+      if(v<min) min=v; if(v>max) max=v;
+    }
+    const y1 = (1-max)*canvas.height/2;
+    const y2 = (1-min)*canvas.height/2;
+    c.moveTo(x,y1); c.lineTo(x,y2);
+  }
+  c.stroke();
+}
+
+// ---- Onset detection: matched filter across the FULL call-up (all 9 tones:
+// 3 distinct frequencies x 3 repeats). Using the whole call-up instead of
+// just one repeat makes this far more robust against noise, since a
+// palindromic or short pattern can otherwise lock onto the wrong repeat
+// cycle. rufEvents comes from the same buildSequence() scaffold used
+// elsewhere, so timing is always in sync with the encoder. ----
+function findOnset(data, sampleRate, rufEvents, symDur){
+  const stepSize = Math.max(1, Math.floor(sampleRate * symDur / 8));
+  const lastEvent = rufEvents[rufEvents.length - 1];
+  const patternSamples = Math.ceil((lastEvent.t0 + lastEvent.dur) * sampleRate);
+  const searchEnd = Math.min(data.length - patternSamples, sampleRate * 15); // search first ~15s
+
+  let best = -1, bestScore = -Infinity;
+  const scores = [];
+  for(let t=0; t<searchEnd; t+=stepSize){
+    let score = 0;
+    for(const ev of rufEvents){
+      const s = t + Math.round(ev.t0*sampleRate);
+      const e = s + Math.round(ev.dur*sampleRate*0.8);
+      score += goertzel(data.subarray(s,e), sampleRate, ev.freq);
+    }
+    scores.push(score);
+    if(score > bestScore){ bestScore = score; best = t; }
+  }
+  const median = scores.slice().sort((a,b)=>a-b)[Math.floor(scores.length/2)] || 0;
+  const confident = bestScore > median * 4; // rough noise-floor check
+  return { sampleIndex: best, confident, bestScore, median };
+}
+
+// ---- Decode a batch of symbol events at known offsets ----
+function decodeSymbols(data, sampleRate, style, startSample, events, robust){
+  const results = [];
+  events.forEach(ev => {
+    const centerStart = startSample + Math.round(ev.t0 * sampleRate);
+    const winLenBase = Math.round(ev.dur * sampleRate * 0.8);
+    let bestDigit = null, bestPow = -1, secondPow = -1, bestFreq = null;
+
+    const offsets = robust
+      ? [-0.02, -0.01, 0, 0.01, 0.02].map(o => Math.round(o * sampleRate))
+      : [0];
+
+    const candidates = [];
+    for(let d=0; d<10; d++) candidates.push({d, f: digitFreq(style, d)});
+
+    offsets.forEach(off => {
+      const s = Math.max(0, centerStart + off);
+      const e = Math.min(data.length, s + winLenBase);
+      if(e - s < 8) return;
+      const seg = data.subarray(s, e);
+      candidates.forEach(c => {
+        const p = goertzel(seg, sampleRate, c.f);
+        if(p > bestPow){ secondPow = bestPow; bestPow = p; bestDigit = c.d; bestFreq = c.f; }
+        else if(p > secondPow){ secondPow = p; }
+      });
+    });
+
+    const confidence = secondPow > 0 ? bestPow/secondPow : 99;
+    results.push({ kind: ev.kind, digit: bestDigit, freq: bestFreq, confidence });
+  });
+  return results;
+}
+
+// Turn a buildSequence() output into {kind, dur, t0} list (t0 = cumulative start time)
+function withOffsets(events){
+  let t = 0;
+  return events.map(ev => {
+    const withT = { ...ev, t0: t };
+    t += ev.dur;
+    return withT;
+  });
+}
+
+async function decodeBuffer(audioBuffer, style, baud, callPattern, callRepeats){
+  const data = audioBuffer.getChannelData(0);
+  const sampleRate = audioBuffer.sampleRate;
+  const robust = $("mode").value === "weak";
+  const symDur = 1/baud;
+
+  drawScope(audioBuffer);
+
+  // Scaffold timing using placeholder digits (structure-only, doesn't depend
+  // on actual digit values) — reused for onset detection AND id/count decode.
+  const scaffold1 = withOffsets(buildSequence(style, baud, "000", "00000", callPattern, callRepeats));
+  const rufEvents = scaffold1.filter(e => e.kind === "ruf");
+  const onset = findOnset(data, sampleRate, rufEvents, symDur);
+  const log = [];
+  log.push(`Onset-Suche: bestScore=${onset.bestScore.toExponential(2)} median=${onset.median.toExponential(2)} → ${onset.confident ? "gefunden" : "UNSICHER (evtl. kein gültiges Signal)"}`);
+
+  if(onset.sampleIndex < 0){
+    $("result").innerHTML = `<span class="decode-bad">Kein Ruf-Muster gefunden.</span>`;
+    $("log").textContent = log.join("\n");
+    return;
+  }
+
+  // Decode id+count using the same scaffold built above
+  const idCountEvents = scaffold1.filter(e => e.kind==="id" || e.kind==="count");
+  const idCountResults = decodeSymbols(data, sampleRate, style, onset.sampleIndex, idCountEvents, robust);
+
+  const idDigits = idCountResults.filter(r=>r.kind==="id").map(r=>r.digit);
+  const countDigits = idCountResults.filter(r=>r.kind==="count").map(r=>r.digit);
+  const stationId = idDigits.map(d=>d==null?"?":d).join("");
+  const groupCount = parseInt(countDigits.map(d=>d==null?"0":d).join(""), 10) || 0;
+
+  log.push(`Decodierte ID: ${stationId}`);
+  log.push(`Decodierte Gruppenanzahl: ${groupCount}`);
+
+  // Rebuild full scaffold now that we know message length, decode data section
+  const msgLen = Math.max(0, groupCount*5);
+  const scaffold2 = withOffsets(buildSequence(style, baud, stationId.padEnd(3,"0"), "0".repeat(msgLen), callPattern, callRepeats));
+  const dataEvents = scaffold2.filter(e => e.kind==="data" || e.kind==="sync");
+  const dataResults = decodeSymbols(data, sampleRate, style, onset.sampleIndex, dataEvents, robust);
+
+  let out = [];
+  let cleanDigits = "";
+  let lowConfCount = 0;
+  dataResults.forEach(r => {
+    if(r.kind==="sync"){
+      out.push(r.confidence > 2 ? "|" : "|?");
+    } else {
+      const shaky = r.confidence < 2.5;
+      if(shaky) lowConfCount++;
+      out.push(shaky ? `${r.digit}?` : `${r.digit}`);
+      cleanDigits += (r.digit==null ? "0" : r.digit);
+    }
+  });
+
+  log.push(`Symbole mit niedriger Konfidenz: ${lowConfCount} / ${dataResults.filter(r=>r.kind==="data").length}`);
+
+  let otpLine = "";
+  if($("otpToggle").checked){
+    const pad = ($("pad").value.match(/\d/g)||[]).join("");
+    if(!pad.length){
+      otpLine = "\n\n⚠ OTP an, aber kein Pad eingegeben.";
+    } else {
+      try {
+        const plainDigits = otpDecode(cleanDigits, pad);
+        const text = digitsToText(plainDigits);
+        otpLine = `\n\nMit Pad entschlüsselt: ${text}`;
+        if(lowConfCount > 0) otpLine += "\n(Achtung: unsichere Symbole oben können den entschlüsselten Text verfälschen.)";
+      } catch(err){
+        otpLine = `\n\n⚠ OTP-Fehler: ${err.message}`;
+      }
+    }
+  }
+
+  const overallOk = onset.confident && lowConfCount === 0;
+  $("result").innerHTML =
+    `<span class="${overallOk ? 'decode-ok' : (lowConfCount>0 ? 'decode-warn':'decode-bad')}">` +
+    `${overallOk ? 'Decodiert ✓' : 'Decodiert, aber mit Unsicherheiten ⚠'}</span>\n\n` +
+    `ID: ${stationId}\nGruppen: ${groupCount}\nDaten: ${out.join(" ")}${otpLine}`;
+  $("log").textContent = log.join("\n");
+}
+
+// ---- File input ----
+$("fileInput").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  if(!file) return;
+  audioCtx = audioCtx || new (window.AudioContext||window.webkitAudioContext)();
+  const arrBuf = await file.arrayBuffer();
+  const audioBuffer = await audioCtx.decodeAudioData(arrBuf);
+  const style = STYLES[$("style").value];
+  const baud = parseFloat($("baud").value);
+  const callPattern = CALL_PATTERNS[$("callPattern").value];
+  const callRepeats = Math.max(1, Math.min(10, parseInt($("callRepeats").value, 10) || 3));
+  $("result").textContent = "Decodiere…";
+  await decodeBuffer(audioBuffer, style, baud, callPattern, callRepeats);
+});
+
+// ---- Microphone capture ----
+let mediaStream = null, micCtx = null, micSource = null, micProcessor = null, chunks = [];
+
+$("recBtn").addEventListener("click", async () => {
+  try {
+    mediaStream = await navigator.mediaDevices.getUserMedia({audio:true});
+  } catch(err){
+    $("recStatus").textContent = "Mikrofonzugriff verweigert oder nicht verfügbar.";
+    return;
+  }
+  micCtx = new (window.AudioContext||window.webkitAudioContext)();
+  micSource = micCtx.createMediaStreamSource(mediaStream);
+  micProcessor = micCtx.createScriptProcessor(4096,1,1);
+  chunks = [];
+  micProcessor.onaudioprocess = (e) => {
+    chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+  };
+  micSource.connect(micProcessor);
+  micProcessor.connect(micCtx.destination); // needed in some browsers to keep the graph alive
+  $("recBtn").disabled = true;
+  $("stopBtn").disabled = false;
+  $("recStatus").textContent = "Aufnahme läuft…";
+});
+
+$("stopBtn").addEventListener("click", async () => {
+  micProcessor.disconnect(); micSource.disconnect();
+  mediaStream.getTracks().forEach(t=>t.stop());
+  $("recBtn").disabled = false;
+  $("stopBtn").disabled = true;
+  $("recStatus").textContent = "Verarbeite Aufnahme…";
+
+  const totalLen = chunks.reduce((s,c)=>s+c.length,0);
+  const merged = new Float32Array(totalLen);
+  let off = 0;
+  chunks.forEach(c => { merged.set(c, off); off += c.length; });
+
+  const audioBuffer = micCtx.createBuffer(1, merged.length, micCtx.sampleRate);
+  audioBuffer.copyToChannel(merged, 0);
+
+  const style = STYLES[$("style").value];
+  const baud = parseFloat($("baud").value);
+  const callPattern = CALL_PATTERNS[$("callPattern").value];
+  const callRepeats = Math.max(1, Math.min(10, parseInt($("callRepeats").value, 10) || 3));
+  $("result").textContent = "Decodiere…";
+  await decodeBuffer(audioBuffer, style, baud, callPattern, callRepeats);
+  $("recStatus").textContent = "Fertig.";
+});
+</script>
+</body>
+</html>

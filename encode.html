@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Encoder — Zahlensender-Toolkit</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<h1>ENCODER</h1>
+<div class="sub">Baut Ruf + ID/Gruppenanzahl + Zahlengruppen als Ton-Sequenz im Sprachband (~300–3000 Hz).</div>
+
+<nav class="tabs">
+  <a href="index.html">Start</a>
+  <a href="encode.html" class="active">Encoder</a>
+  <a href="decode.html">Decoder</a>
+</nav>
+
+<div class="rack">
+  <div class="panel">
+    <label style="margin-top:0;">Format-Stil</label>
+    <select id="style">
+      <option value="simple">Einfach — robuster 10-Ton-Code</option>
+      <option value="xpa2">XPA2-Stil — enge 15-Hz-Cluster, Sync alle 5</option>
+      <option value="xpb">XPB-Stil — Multiton, 175-Hz-Raster</option>
+      <option value="p07">P07-Stil (Vorschau)</option>
+    </select>
+    <div class="hint" id="styleHint"></div>
+
+    <label>Stations-ID (3 Ziffern)</label>
+    <input id="stationId" type="text" maxlength="3" value="317" inputmode="numeric">
+
+    <label style="margin-top:0;">Ruf/Intro</label>
+    <select id="callPattern">
+      <option value="threeToneNumbers">3-Ton-Nummernstation (klassisch)</option>
+      <option value="xpa2">XPA2-Ruf</option>
+      <option value="xpb">XPB-Ruf</option>
+      <option value="p07">P07-Ruf (Vorschau)</option>
+    </select>
+    <div class="hint">Ruf ist unabhängig vom Format-Stil unten wählbar — z. B. XPA2-Zahlencode mit 3-Ton-Ruf kombinierbar.</div>
+
+    <label>Ruf-Länge (Wiederholungen)</label>
+    <input id="callRepeats" type="number" min="1" max="10" value="3">
+
+    <label>OTP-Verschlüsselung <input type="checkbox" id="otpToggle" style="width:auto;vertical-align:middle;"></label>
+    <div class="hint">An: Klartext eingeben, wird über Alphabet + Pad (Schlüssel) zu Ziffern. Aus: direkt Ziffern eingeben.</div>
+
+    <div id="otpBlock" style="display:none;">
+      <label>Klartext</label>
+      <input id="plainText" type="text" value="TREFFEN MORGEN 0900">
+      <label>Pad / Schlüssel (Ziffern, geheim — wird NICHT mitgesendet)</label>
+      <input id="pad" type="text" inputmode="numeric" placeholder="z. B. 4471928305...">
+      <div class="btnrow">
+        <button id="genPadBtn" class="secondary" type="button">🎲 Zufälliges Pad erzeugen</button>
+      </div>
+      <div class="hint" id="padWarn"></div>
+    </div>
+
+    <label id="messageLabel">Zahlengruppen (beliebig viele Ziffern)</label>
+    <input id="message" type="text" value="4829156307" inputmode="numeric">
+    <div class="hint" id="otpPreview"></div>
+
+    <label>Baudrate</label>
+    <select id="baud">
+      <option value="5">5 Bd — sehr robust / leise nutzbar</option>
+      <option value="7.5" selected>7.5 Bd — wie reales XPA2</option>
+      <option value="16">16 Bd — schneller (XPB-Bereich)</option>
+    </select>
+    <div class="hint" id="dspWarn" style="color:#f0a742;"></div>
+
+    <label>Sendepegel: <span id="gainLabel">-18 dB</span></label>
+    <input id="gain" type="range" min="-40" max="0" value="-18" step="1">
+    <div class="hint">Auch bei sehr leisem Pegel bleibt die Struktur hörbar unterscheidbar.</div>
+
+    <div class="btnrow">
+      <button id="playBtn">▶ Erzeugen &amp; abspielen</button>
+      <button id="wavBtn" class="secondary" disabled>⬇ Als WAV exportieren</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <label style="margin-top:0;">Wellenform</label>
+    <canvas id="scope" width="900" height="130"></canvas>
+    <div class="meta"><span id="durLabel">Dauer: —</span><span>Abtastrate: 8000 Hz (Sprachband)</span></div>
+
+    <label>Sequenz-Log</label>
+    <div class="readout" id="log">Bereit.</div>
+  </div>
+</div>
+
+<script src="js/auth.js"></script>
+<script src="js/engine.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+
+function updateStyleHint(){
+  $("styleHint").textContent = STYLES[$("style").value].hint;
+  updateDspWarn();
+}
+$("style").addEventListener("change", updateStyleHint);
+$("baud").addEventListener("change", updateDspWarn);
+function updateDspWarn(){
+  const style = STYLES[$("style").value];
+  const baud = parseFloat($("baud").value);
+  const w = dspLimitWarning(style, baud);
+  $("dspWarn").textContent = w || "";
+}
+updateStyleHint();
+$("gain").addEventListener("input", () => { $("gainLabel").textContent = $("gain").value + " dB"; });
+
+// ---- OTP wiring ----
+function updateOtpUi(){
+  const on = $("otpToggle").checked;
+  $("otpBlock").style.display = on ? "block" : "none";
+  $("messageLabel").textContent = on ? "Zahlengruppen (automatisch aus Klartext+Pad erzeugt)" : "Zahlengruppen (beliebig viele Ziffern)";
+  $("message").readOnly = on;
+  refreshOtpPreview();
+}
+function refreshOtpPreview(){
+  if(!$("otpToggle").checked) { $("otpPreview").textContent = ""; return; }
+  const plain = textToDigits($("plainText").value);
+  const pad = ($("pad").value.match(/\d/g)||[]).join("");
+  if(!pad.length){
+    $("padWarn").textContent = "Bitte Pad eingeben oder generieren.";
+    $("otpPreview").textContent = "";
+    $("message").value = "";
+    return;
+  }
+  if(pad.length < plain.length){
+    $("padWarn").textContent = `⚠ Pad (${pad.length} Ziffern) ist kürzer als der codierte Klartext (${plain.length} Ziffern) — wird zyklisch wiederholt. Das ist dann KEIN sicheres One-Time-Pad mehr, nur eine einfache Verschleierung.`;
+  } else {
+    $("padWarn").textContent = "";
+  }
+  const cipher = otpEncode(plain, pad);
+  $("message").value = cipher;
+  $("otpPreview").textContent = `Klartext→Ziffern: ${plain}  →  mit Pad verschlüsselt: ${cipher}`;
+}
+$("otpToggle").addEventListener("change", updateOtpUi);
+$("plainText").addEventListener("input", refreshOtpPreview);
+$("pad").addEventListener("input", refreshOtpPreview);
+$("genPadBtn").addEventListener("click", () => {
+  const plain = textToDigits($("plainText").value);
+  $("pad").value = generatePad(Math.max(20, plain.length));
+  refreshOtpPreview();
+});
+updateOtpUi();
+
+let lastBuf = null;
+
+// Kontinuierliche Phase: EIN durchgehender Oszillator für die gesamte
+// Sequenz. Frequenzwechsel zwischen Symbolen laufen über kurze
+// linearRampToValueAtTime-Übergänge (paar ms) statt Ton-für-Ton neu zu
+// starten — dadurch bleibt die Phase durchgehend und es klingt auch bei
+// hoher Baudrate (z. B. XPA2) nicht mehr "geblockt"/gestückelt. Die
+// Amplitude wird nur bei echten Pausen (freq===null) auf 0 gefahren.
+function renderBuffer(events, gainDb){
+  const totalDur = events.reduce((s,e)=>s+e.dur,0);
+  const totalSamples = Math.ceil(totalDur * SAMPLE_RATE) + 200;
+  const ctxOff = new OfflineAudioContext(1, totalSamples, SAMPLE_RATE);
+  const gainLin = Math.pow(10, gainDb/20);
+  const freqRamp = 0.004;   // sanfter Frequenz-Übergang zwischen Symbolen
+  const silenceFade = 0.006; // Ein-/Ausblenden nur an echten Pausen
+
+  const osc = ctxOff.createOscillator();
+  osc.type = "sine";
+  const g = ctxOff.createGain();
+  osc.connect(g).connect(ctxOff.destination);
+
+  let t = 0;
+  let gateOpen = false;
+  // Startfrequenz setzen (erstes Ereignis mit Ton, sonst egal)
+  const firstTone = events.find(e=>e.freq);
+  osc.frequency.setValueAtTime(firstTone ? firstTone.freq : 800, 0);
+
+  events.forEach(ev => {
+    const start = t, end = t + ev.dur;
+    if(ev.freq){
+      if(!gateOpen){
+        g.gain.setValueAtTime(0, start);
+        g.gain.linearRampToValueAtTime(gainLin, start+silenceFade);
+        gateOpen = true;
+      }
+      osc.frequency.linearRampToValueAtTime(ev.freq, start+freqRamp);
+    } else {
+      if(gateOpen){
+        g.gain.setValueAtTime(gainLin, start);
+        g.gain.linearRampToValueAtTime(0, start+silenceFade);
+        gateOpen = false;
+      }
+    }
+    t = end;
+  });
+  if(gateOpen) g.gain.linearRampToValueAtTime(0, t+silenceFade);
+
+  osc.start(0);
+  osc.stop(t + 0.02);
+
+  return ctxOff.startRendering().then(buf => ({buf, duration:t}));
+}
+
+function drawScope(buf){
+  const canvas = $("scope");
+  const c = canvas.getContext("2d");
+  c.clearRect(0,0,canvas.width,canvas.height);
+  c.strokeStyle = "#5ee08c";
+  c.lineWidth = 1;
+  const data = buf.getChannelData(0);
+  const step = Math.ceil(data.length/canvas.width);
+  c.beginPath();
+  for(let x=0;x<canvas.width;x++){
+    let min=1,max=-1;
+    for(let i=0;i<step;i++){
+      const idx = x*step+i;
+      if(idx>=data.length) break;
+      const v = data[idx];
+      if(v<min) min=v; if(v>max) max=v;
+    }
+    const y1 = (1-max)*canvas.height/2;
+    const y2 = (1-min)*canvas.height/2;
+    c.moveTo(x,y1); c.lineTo(x,y2);
+  }
+  c.stroke();
+}
+
+function logSequence(events){
+  const lines = events.filter(e=>e.freq).map(e => `${e.kind.padEnd(6)} ${e.freq.toFixed(1)} Hz`);
+  $("log").textContent = lines.join("\n");
+}
+
+function bufferToWav(buf){
+  const numFrames = buf.length;
+  const data = buf.getChannelData(0);
+  const bytesPerSample = 2;
+  const blockAlign = bytesPerSample;
+  const byteRate = SAMPLE_RATE * blockAlign;
+  const dataSize = numFrames * blockAlign;
+  const bufferArr = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(bufferArr);
+  const writeStr = (o,s) => { for(let i=0;i<s.length;i++) view.setUint8(o+i, s.charCodeAt(i)); };
+  writeStr(0,"RIFF"); view.setUint32(4, 36+dataSize, true); writeStr(8,"WAVE");
+  writeStr(12,"fmt "); view.setUint32(16,16,true); view.setUint16(20,1,true);
+  view.setUint16(22,1,true); view.setUint32(24,SAMPLE_RATE,true);
+  view.setUint32(28,byteRate,true); view.setUint16(32,blockAlign,true); view.setUint16(34,16,true);
+  writeStr(36,"data"); view.setUint32(40,dataSize,true);
+  let offset = 44;
+  for(let i=0;i<numFrames;i++){
+    let s = Math.max(-1, Math.min(1, data[i]));
+    view.setInt16(offset, s<0 ? s*0x8000 : s*0x7FFF, true);
+    offset += 2;
+  }
+  return new Blob([bufferArr], {type:"audio/wav"});
+}
+
+let audioCtx = null;
+
+$("playBtn").addEventListener("click", async () => {
+  const id3 = ($("stationId").value.match(/\d/g)||[]).slice(0,3).join("").padEnd(3,"0");
+  const msg = ($("message").value.match(/\d/g)||[]).join("");
+  if(!msg.length){ alert("Bitte Ziffern für die Nachricht eingeben."); return; }
+
+  const style = STYLES[$("style").value];
+  const baud = parseFloat($("baud").value);
+  const gainDb = parseFloat($("gain").value);
+  const callPattern = CALL_PATTERNS[$("callPattern").value];
+  const callRepeats = Math.max(1, Math.min(10, parseInt($("callRepeats").value, 10) || 3));
+
+  $("playBtn").disabled = true;
+  $("playBtn").textContent = "Rendere…";
+
+  const events = buildSequence(style, baud, id3, msg, callPattern, callRepeats);
+  const {buf, duration} = await renderBuffer(events, gainDb);
+  lastBuf = buf;
+
+  drawScope(buf);
+  logSequence(events);
+  $("durLabel").textContent = `Dauer: ${duration.toFixed(2)} s`;
+  $("wavBtn").disabled = false;
+
+  audioCtx = audioCtx || new (window.AudioContext||window.webkitAudioContext)();
+  const src = audioCtx.createBufferSource();
+  src.buffer = buf;
+  src.connect(audioCtx.destination);
+  src.start();
+
+  $("playBtn").disabled = false;
+  $("playBtn").textContent = "▶ Erzeugen & abspielen";
+});
+
+$("wavBtn").addEventListener("click", () => {
+  if(!lastBuf) return;
+  const blob = bufferToWav(lastBuf);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = "sequenz.wav"; a.click();
+  URL.revokeObjectURL(url);
+});
+</script>
+</body>
+</html>

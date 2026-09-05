@@ -28,10 +28,12 @@
       <option value="xpa2">XPA2-Stil</option>
       <option value="xpb">XPB-Stil</option>
       <option value="p07">P07-Stil (Vorschau)</option>
+      <option value="mfsk_weak">MFSK-Schwachsignal (orthogonal)</option>
     </select>
 
     <label>Baudrate (muss zum Sender passen)</label>
     <select id="baud">
+      <option value="4">4 Bd — Schwachsignal</option>
       <option value="5">5 Bd</option>
       <option value="7.5" selected>7.5 Bd</option>
       <option value="16">16 Bd</option>
@@ -39,7 +41,7 @@
 
     <label>Ruf/Intro (muss zum Sender passen)</label>
     <select id="callPattern">
-      <option value="threeToneNumbers">3-Ton-Nummernstation (klassisch)</option>
+      <option value="threeToneNumbers">3-Ton-Nummernstation / „Three Note Oddity“ (G04-Vorbild)</option>
       <option value="xpa2">XPA2-Ruf</option>
       <option value="xpb">XPB-Ruf</option>
       <option value="p07">P07-Ruf (Vorschau)</option>
@@ -280,8 +282,8 @@ $("fileInput").addEventListener("change", async (e) => {
   audioCtx = audioCtx || new (window.AudioContext||window.webkitAudioContext)();
   const arrBuf = await file.arrayBuffer();
   const audioBuffer = await audioCtx.decodeAudioData(arrBuf);
-  const style = STYLES[$("style").value];
   const baud = parseFloat($("baud").value);
+  const style = resolveStyle(STYLES[$("style").value], baud);
   const callPattern = CALL_PATTERNS[$("callPattern").value];
   const callRepeats = Math.max(1, Math.min(10, parseInt($("callRepeats").value, 10) || 3));
   $("result").textContent = "Decodiere…";
@@ -327,8 +329,8 @@ $("stopBtn").addEventListener("click", async () => {
   const audioBuffer = micCtx.createBuffer(1, merged.length, micCtx.sampleRate);
   audioBuffer.copyToChannel(merged, 0);
 
-  const style = STYLES[$("style").value];
   const baud = parseFloat($("baud").value);
+  const style = resolveStyle(STYLES[$("style").value], baud);
   const callPattern = CALL_PATTERNS[$("callPattern").value];
   const callRepeats = Math.max(1, Math.min(10, parseInt($("callRepeats").value, 10) || 3));
   $("result").textContent = "Decodiere…";

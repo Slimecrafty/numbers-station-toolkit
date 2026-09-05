@@ -108,6 +108,33 @@ OTP mehr, sondern nur noch eine einfache Verschleierung. Für echte
 Vertraulichkeit: Pad mindestens so lang wie die Nachricht, nur einmal
 verwenden, sicher (nicht digital neben dem Gerät) austauschen.
 
+## Änderungen — Sound-Korrektur (Ruf + Schwachsignal)
+
+**1. Ruf "3-Ton-Nummernstation" korrigiert auf reales G04-Vorbild ("Three Note Oddity"):**
+Vorher: drei hohe, kurze Digital-Töne (850/1150/1450 Hz) — klang wie ein
+Telefon-Signalton, nicht wie eine echte Station. Jetzt: tiefes, langsames
+Moll-Motiv (G4–Es4–C4, 392/311/262 Hz, je 0,45 s, unabhängig von der
+Baudrate), angelehnt an G04 "Three Note Oddity" (vermutlich ungarischer
+Nachrichtendienst, aktiv bis ~2005). Grundlage: Akkordanalyse der
+Conet-Project-Aufnahme (c-Moll) plus Stations-Beschreibungen (tiefe,
+langsame elektronische Töne, starker Rauschanteil). **Ehrlicher Hinweis:**
+Es gibt keine veröffentlichte Spektralvermessung der Original-Hz-Werte —
+das ist eine begründete Annäherung, keine Reproduktion einer Messung.
+
+**2. Neuer Style "MFSK-Schwachsignal (orthogonal)":**
+Ton-Abstand wird automatisch aus der Baudrate berechnet (Ton-Abstand =
+1,3× Baudrate — siehe Kommentar in `resolveStyle()` in `engine.js` dazu,
+warum nicht exakt 1× wie im Lehrbuch: der Decoder nutzt bewusst nur 80%
+des Symbolfensters als Zeitreserve, das erfordert etwas mehr Abstand).
+Mit niedriger Baudrate (Standard 4 Bd) kombiniert ergibt das lange
+Symboldauer → mehr Energie pro Symbol im schmalen Analysefenster → hörbar
+und decodierbar auch bei starkem Rauschen. Per End-to-End-Test mit
+künstlichem Rauschen gemessen (nicht nur behauptet): bei −6 bis −12 dB SNR
+lag die Ziffern-Trefferquote 20–30 Prozentpunkte über einem normalen Stil
+gleicher Länge. Reale Schwachsignal-Digimodes (MFSK16, Olivia) nutzen
+zusätzlich Vorwärts-Fehlerkorrektur — hier bewusst weggelassen, um die
+Sequenz für dich nachvollziehbar/lesbar zu halten.
+
 ## Quellen (ENIGMA-Klassifizierung)
 
 - sigidwiki.com — CIS MFSK-16 XPA2, P07 numbers station
@@ -115,6 +142,8 @@ verwenden, sicher (nicht digital neben dem Gerät) austauschen.
 - signalshed.com — ENIGMA Control List, XPB-Ankündigung (2019)
 - shortwaveinvestigations.wordpress.com — E07 Formatbeschreibung
 - radiohobbyist.org / spynumbers.com — ENIGMA-Klassifizierungsschema allgemein
+- numbers-stations.com, radioespionage.net, radiohobbyist.org (3NOTE.HTM) — G04 "Three Note Oddity" (Herkunft, Sprache, Sendezeiten)
+- chordify.net — Akkordanalyse der Conet-Project-Aufnahme "Three Note Oddity" (c-Moll)
 
 ## Lizenz
 

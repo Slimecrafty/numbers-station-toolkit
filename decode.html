@@ -283,7 +283,8 @@ $("fileInput").addEventListener("change", async (e) => {
   const arrBuf = await file.arrayBuffer();
   const audioBuffer = await audioCtx.decodeAudioData(arrBuf);
   const baud = parseFloat($("baud").value);
-  const style = resolveStyle(STYLES[$("style").value], baud);
+  const rawStyle = STYLES[$("style").value];
+  const style = (typeof resolveStyle === "function") ? resolveStyle(rawStyle, baud) : rawStyle;
   const callPattern = CALL_PATTERNS[$("callPattern").value];
   const callRepeats = Math.max(1, Math.min(10, parseInt($("callRepeats").value, 10) || 3));
   $("result").textContent = "Decodiere…";
@@ -330,7 +331,8 @@ $("stopBtn").addEventListener("click", async () => {
   audioBuffer.copyToChannel(merged, 0);
 
   const baud = parseFloat($("baud").value);
-  const style = resolveStyle(STYLES[$("style").value], baud);
+  const rawStyle = STYLES[$("style").value];
+  const style = (typeof resolveStyle === "function") ? resolveStyle(rawStyle, baud) : rawStyle;
   const callPattern = CALL_PATTERNS[$("callPattern").value];
   const callRepeats = Math.max(1, Math.min(10, parseInt($("callRepeats").value, 10) || 3));
   $("result").textContent = "Decodiere…";

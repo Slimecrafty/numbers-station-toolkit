@@ -96,21 +96,36 @@
 const $ = id => document.getElementById(id);
 
 function updateStyleHint(){
-  $("styleHint").textContent = STYLES[$("style").value].hint;
-  // Schwachsignal-Stil: Baudrate automatisch auf einen sinnvollen niedrigen
-  // Wert vorschlagen (orthogonale Bedingung profitiert von langer Symboldauer).
-  if($("style").value === "mfsk_weak" && $("baud").value !== "4"){
-    $("baud").value = "4";
+  try {
+    $("styleHint").textContent = STYLES[$("style").value].hint;
+    // Schwachsignal-Stil: Baudrate automatisch auf einen sinnvollen niedrigen
+    // Wert vorschlagen (orthogonale Bedingung profitiert von langer Symboldauer).
+    if($("style").value === "mfsk_weak" && $("baud").value !== "4"){
+      $("baud").value = "4";
+    }
+  } catch(err){
+    console.error("Style-Hinweis konnte nicht gesetzt werden:", err);
   }
   updateDspWarn();
 }
 $("style").addEventListener("change", updateStyleHint);
 $("baud").addEventListener("change", updateDspWarn);
 function updateDspWarn(){
-  const style = resolveStyle(STYLES[$("style").value], parseFloat($("baud").value));
-  const baud = parseFloat($("baud").value);
-  const w = dspLimitWarning(style, baud);
-  $("dspWarn").textContent = w || (style.orthogonal ? `✓ Orthogonal: Ton-Abstand = ${style.step} Hz = Baudrate.` : "");
+  // Absicherung: falls js/engine.js eine ältere Version ist (z. B. weil beim
+  // Hochladen nur encode.html aktualisiert wurde, aber nicht engine.js),
+  // fehlt resolveStyle() dort noch. Ohne dieses try/catch würde das den
+  // gesamten restlichen Skript-Block abbrechen — inklusive OTP-Checkbox
+  // und Play-Button weiter unten, die dann gar nicht mehr reagieren.
+  try {
+    const baud = parseFloat($("baud").value);
+    const rawStyle = STYLES[$("style").value];
+    const style = (typeof resolveStyle === "function") ? resolveStyle(rawStyle, baud) : rawStyle;
+    const w = dspLimitWarning(style, baud);
+    $("dspWarn").textContent = w || (style.orthogonal ? `✓ Orthogonal: Ton-Abstand = ${style.step} Hz = Baudrate.` : "");
+  } catch(err){
+    console.error("DSP-Warnung konnte nicht berechnet werden (evtl. js/engine.js veraltet?):", err);
+    $("dspWarn").textContent = "";
+  }
 }
 updateStyleHint();
 $("gain").addEventListener("input", () => { $("gainLabel").textContent = $("gain").value + " dB"; });
@@ -266,7 +281,8 @@ $("playBtn").addEventListener("click", async () => {
   if(!msg.length){ alert("Bitte Ziffern für die Nachricht eingeben."); return; }
 
   const baud = parseFloat($("baud").value);
-  const style = resolveStyle(STYLES[$("style").value], baud);
+  const rawStyle = STYLES[$("style").value];
+  const style = (typeof resolveStyle === "function") ? resolveStyle(rawStyle, baud) : rawStyle;
   const gainDb = parseFloat($("gain").value);
   const callPattern = CALL_PATTERNS[$("callPattern").value];
   const callRepeats = Math.max(1, Math.min(10, parseInt($("callRepeats").value, 10) || 3));

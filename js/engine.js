@@ -21,10 +21,16 @@ const STYLES = {
     hint: "Zehn gut getrennte Töne (150 Hz Abstand). Leicht zu decodieren, guter Startpunkt.",
     base: 600, step: 150, sync: 2400,
   },
+  // Korrigiert auf realen ENIGMA-Katalogeintrag: XPA2, USB, 14-Ton-MFSK,
+  // 7,8125 Bd, 15,625 Hz Ton-Abstand, Moskau/Russland. Vorher stand hier
+  // ein grob gerundeter Näherungswert (15 Hz / 7.5 Bd) — keine reale
+  // Katalogangabe. step/sync sowie die vorgeschlagene Baudrate im UI
+  // (encode.html/decode.html) sind jetzt beide exakt auf den Katalogwert
+  // gesetzt.
   xpa2: {
     label: "XPA2-Stil",
-    hint: "Ziffern-Töne eng gestaffelt (15 Hz Abstand, wie reales XPA2). Sync-Ton 15 Hz unter dem Nullpunkt.",
-    base: 1000, step: 15, sync: 985,
+    hint: "Ziffern-Töne eng gestaffelt (15,625 Hz Abstand, exakter ENIGMA-Katalogwert für XPA2: USB, 14-Ton-MFSK, 7,8125 Bd, Moskau/Russland). Sync-Ton 15,625 Hz unter dem Nullpunkt. Baudrate unten wird beim Wechsel auf diesen Stil automatisch auf 7,8125 Bd vorgeschlagen.",
+    base: 1000, step: 15.625, sync: 984.375,
     syncEvery: 5,
   },
   xpb: {
@@ -75,15 +81,19 @@ function resolveStyle(style, baud) {
 // welchem Format-Stil die Zahlengruppen dahinter codiert werden.
 const CALL_PATTERNS = {
   // Angelehnt an G04 "Three Note Oddity" (vermutlich ungarischer Nachrichtendienst,
-  // Sendungen bis 2005). Laut Akkordanalyse der Conet-Project-Aufnahme steht das
-  // Motiv in c-Moll; Originalbeschreibungen nennen tiefe, langsame elektronische
-  // Töne mit starkem Rauschanteil — nicht die hohen, kurzen Digital-Blips, die
-  // hier vorher standen. Exakte Hz-Werte der realen Aufnahme sind nirgends
-  // spektral vermessen veröffentlicht — das hier ist eine auf Tonart + Beschreibung
-  // gestützte, ehrliche Annäherung, keine Reproduktion einer Messung.
+  // Sendungen bis 2005). Frequenzwerte 512/739/899 Hz nutzergeliefert, mit Quellen
+  // (reddit.com/r/signalis-Thread + tvtropes.org, beide zum Videospiel "Signalis",
+  // das den echten G04-Ruf als Easter Egg referenziert/nachbaut). WICHTIG,
+  // Ehrlichkeit statt Übernahme ohne Prüfung: das sind Werte aus einer
+  // Fan-Community-Analyse der SPIEL-Audiodatei, keine spektral vermessene
+  // Original-Aufnahme der echten Station (Conet-Project) selbst — die
+  // Akkordanalyse der echten Aufnahme (c-Moll, siehe README-Quellen) nennt
+  // stattdessen einen tiefen, langsamen Klangcharakter. Diese drei Werte sind
+  // trotzdem hier eingesetzt, wie gewünscht — falls die echte Aufnahme später
+  // spektral geprüft wird, ggf. nochmal anpassen.
   threeToneNumbers: {
     label: "3-Ton-Nummernstation / „Three Note Oddity“ (G04-Vorbild)",
-    freqs: [392.0, 311.13, 261.63], // G4–Es4–C4, absteigendes Moll-Motiv
+    freqs: [512, 739, 899],
     noteDur: 0.45, // eigene, baudraten-unabhängige Dauer — echtes Vorbild ist ein
                    // langsames Melodie-Motiv, kein an die Datenrate gekoppelter Blip
   },

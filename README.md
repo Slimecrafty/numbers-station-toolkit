@@ -61,10 +61,14 @@ python3 -m http.server 8000
 | simple | 150 Hz Abstand        | fester Extra-Ton         | eigene, robuste Variante |
 | xpa2   | 15 Hz Abstand (eng)   | alle 5 Ziffern, 15 Hz unter Null | XPA2 |
 | xpb    | 175 Hz Abstand (weit) | fester Extra-Ton         | XPB / XPB1 |
-| p07    | 120 Hz Abstand        | fester Extra-Ton         | P07 (nur FSK-Ebene, siehe unten) |
+| p07    | 120 Hz Abstand        | fester Extra-Ton         | P07 (nur FSK-Ebene) |
 
 Alle Frequenzen liegen im Sprachband (~300–3000 Hz), damit die Sequenz über
 normale AM/FM/SSB-Sprachkanäle übertragbar bleibt.
+
+Ruf/Intro (3-Ton-Nummernstation, XPA2-Ruf, XPB-Ruf, P07-Ruf) und Ruf-Länge
+sind unabhängig vom gewählten Zahlen-Format-Stil einstellbar — beliebig
+kombinierbar.
 
 ## Passwortschutz einrichten
 
@@ -83,29 +87,6 @@ crypto.subtle.digest('SHA-256', new TextEncoder().encode('DEIN-PASSWORT'))
 
 Den ausgegebenen Hex-String in `PASSWORD_HASH` in `js/auth.js` eintragen.
 
-## Ruf/Intro getrennt vom Format-Stil
-
-Der Ruf (3-Ton-Nummernstation, XPA2-Ruf, XPB-Ruf, P07-Ruf) ist unabhängig vom
-Zahlen-Format-Stil wählbar — z. B. XPA2-Zahlencode mit dem klassischen 3-Ton-Ruf
-kombinierbar. Die Ruf-Länge (Wiederholungen) ist separat einstellbar (1–10).
-
-## Kontinuierliche Phase (kein "Geblöcke" mehr bei hoher Baudrate)
-
-Der Encoder nutzt jetzt einen einzigen durchgehenden Oszillator für die gesamte
-Sequenz; Frequenzwechsel zwischen Symbolen laufen über kurze Ramps statt über
-Ton-für-Ton-Neustarts mit eigener Attack/Release-Hüllkurve. Dadurch bleibt die
-Phase durchgehend, und schnellere Formate wie XPA2 klingen nicht mehr
-gestückelt. Die Amplitude wird nur an echten Pausen (z. B. zwischen Ruf und
-Daten) auf 0 gefahren.
-
-## DSP-Grenzwarnung
-
-Bei zu hoher Baudrate relativ zum Ton-Abstand eines Stils (z. B. XPA2 mit 15 Hz
-Abstand bei 16 Bd) zeigt der Encoder eine Warnung: die Frequenzauflösung ist
-ungefähr 1/Fensterdauer, bei zu kurzem Fenster lassen sich eng benachbarte Töne
-nicht mehr zuverlässig trennen. Das ist eine reale physikalische Grenze, kein
-Bug — daher nutzt reales XPA2 auch nur 7,5 Bd.
-
 ## OTP-Verschlüsselung (optional, zuschaltbar)
 
 Encoder und Decoder haben einen OTP-Schalter:
@@ -119,28 +100,13 @@ Encoder und Decoder haben einen OTP-Schalter:
 - **Aus**: Zahlengruppen werden direkt eingegeben/gesendet, keine Text- oder
   Pad-Logik.
 
-**Ehrlicher Hinweis:** Ein One-Time-Pad ist nur dann informationstheoretisch
+**Sicherheitshinweis:** Ein One-Time-Pad ist nur dann informationstheoretisch
 sicher, wenn das Pad echt zufällig, mindestens so lang wie die Nachricht und
 wirklich nur ein einziges Mal verwendet wird. Ist das eingegebene Pad kürzer
-als die Nachricht, wird es der Nutzbarkeit halber zyklisch wiederholt — das
-Tool zeigt dann eine Warnung, denn ab dann ist es kein sicheres OTP mehr,
-sondern nur noch eine einfache Verschleierung (wie eine Vigenère-Chiffre).
-Für echte Vertraulichkeit: Pad mindestens so lang wie die Nachricht, nur einmal
+als die Nachricht, wird es zyklisch wiederholt — dann ist es kein sicheres
+OTP mehr, sondern nur noch eine einfache Verschleierung. Für echte
+Vertraulichkeit: Pad mindestens so lang wie die Nachricht, nur einmal
 verwenden, sicher (nicht digital neben dem Gerät) austauschen.
-
-## Bekannte Grenzen / Fahrplan
-
-- **Decoder-Sync**: Die Onset-Erkennung sucht den 3-Ton-Ruf per Sliding-Window-
-  Goertzel. Funktioniert gut bei brauchbarem SNR; bei sehr starkem Rauschen oder
-  Frequenzdrift (z. B. schlecht kalibrierte SSB-Empfänger) kann die automatische
-  Erkennung fehlschlagen — das wird im Log angezeigt.
-- **P07**: Reales P07 nutzt FSK/BPSK-Intro + QPSK-OFDM-Datenteil. Hier ist nur
-  die FSK-Ebene nachgebildet; ein echter OFDM-Datenteil ist ein separates,
-  deutlich größeres DSP-Projekt für später.
-- **SSB**: Bisher nur rechnerisch für Sprachband ausgelegt, noch kein Feldtest
-  über echtes SSB (Trägerunterdrückung/Klirren durch Sender-AGC können die
-  Ton-Reinheit beeinflussen — vor Praxiseinsatz testen).
-- **Mono-Audio**: Der Decoder nutzt nur den ersten Audiokanal.
 
 ## Quellen (ENIGMA-Klassifizierung)
 

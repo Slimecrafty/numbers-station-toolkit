@@ -59,7 +59,7 @@ python3 -m http.server 8000
 | Stil   | Ton-Raster            | Sync                     | Angelehnt an |
 |--------|-----------------------|--------------------------|--------------|
 | simple | 150 Hz Abstand        | fester Extra-Ton         | eigene, robuste Variante |
-| xpa2   | 15 Hz Abstand (eng)   | alle 5 Ziffern, 15 Hz unter Null | XPA2 |
+| xpa2   | 15,625 Hz Abstand (eng, exakter Katalogwert) | alle 5 Ziffern, 15,625 Hz unter Null | XPA2 (USB, 14-Ton-MFSK, 7,8125 Bd, Moskau/Russland) |
 | xpb    | 175 Hz Abstand (weit) | fester Extra-Ton         | XPB / XPB1 |
 | p07    | 120 Hz Abstand        | fester Extra-Ton         | P07 (nur FSK-Ebene) |
 
@@ -135,6 +135,49 @@ gleicher Länge. Reale Schwachsignal-Digimodes (MFSK16, Olivia) nutzen
 zusätzlich Vorwärts-Fehlerkorrektur — hier bewusst weggelassen, um die
 Sequenz für dich nachvollziehbar/lesbar zu halten.
 
+## Änderungen — Tonkorrektur (XPA2, G04-Ruf, Übergänge, eigene Audiodatei)
+
+**3. XPA2 auf exakten Katalogwert korrigiert:** Vorher stand ein grob
+gerundeter Näherungswert (15 Hz Abstand, als Baudrate-Vorschlag 7,5 Bd) im
+Code. Realer ENIGMA-Katalogeintrag: XPA2, USB, 14-Ton-MFSK, **7,8125 Bd**,
+**15,625 Hz** Ton-Abstand, Moskau/Russland. `engine.js` (`STYLES.xpa2`) sowie
+die Baudrate-Auswahl in Encoder und Decoder nutzen jetzt exakt diese Werte;
+beim Umschalten auf den XPA2-Stil wird die Baudrate automatisch auf 7,8125 Bd
+vorgeschlagen (analog zum bestehenden Auto-Vorschlag beim Schwachsignal-Stil).
+
+**4. Ruf "Three Note Oddity" (G04) — Frequenzen aktualisiert:** 512/739/899 Hz
+statt des vorherigen Moll-Motivs (392/311/262 Hz). Quelle: reddit.com/r/signalis
+sowie tvtropes.org, beide zum Videospiel *Signalis*, das den echten G04-Ruf als
+Easter Egg nachbildet/referenziert. **Ehrlicher Hinweis:** Das sind Werte aus
+einer Fan-Community-Analyse der Spiel-Audiodatei, keine spektral vermessene
+Original-Aufnahme der echten Station selbst — die Akkordanalyse der
+Conet-Project-Aufnahme (c-Moll, siehe Quellen unten) beschreibt stattdessen
+einen tiefen, langsamen Klangcharakter. Auf ausdrücklichen Wunsch trotzdem so
+eingesetzt; bei Bedarf später gegen eine echte Spektralmessung austauschbar.
+
+**5. Ton-Übergänge entklickt ("klingt wie einzelne Bauklötze"-Fix):** Die
+durchgehende Phase (ein Oszillator für die ganze Sequenz) gab es schon vorher,
+hat das Blockig-Klingen aber nicht vollständig behoben — ein reiner
+Frequenz-Ramp ohne Amplitudenänderung wird bei größeren Tonsprüngen (z. B.
+512→739 Hz im Ruf-Motiv) trotzdem als harter Übergang wahrgenommen. Fix: bei
+jedem Ton-zu-Ton-Wechsel bei offenem Gate läuft jetzt zusätzlich ein kurzer,
+zum Frequenz-Ramp synchroner Amplituden-Dip (Einsacken auf 80 % und zurück,
+insgesamt ~6 ms) — kaschiert den Wechsel, ohne Phase oder MFSK-Timing zu
+verändern. Geprüft: Freq-Ramp (6 ms) bleibt bei allen Baudraten-Presets
+deutlich innerhalb der 20 %-Zeitreserve, die `decodeSymbols()` je Symbolfenster
+frei lässt — Decoder-Genauigkeit unverändert (Regressionstest: 10/10 Ziffern
+korrekt bei XPA2 7,8125 Bd und beim "Einfach"-Stil).
+
+**6. Ruf als eigene Audiodatei (Encoder, optional):** Datei-Upload ersetzt nur
+den synthetisierten Ruf-Teil; ID/Anzahl/Zahlengruppen danach bleiben Ton-basiert
+wie gehabt. Ich kann hier keine echte, urheberrechtlich geschützte
+Original-Aufnahme (z. B. Conet-Project) mitliefern — das eigene/gemeinfreie
+File muss der Nutzer selbst beisteuern. **Bekannte Einschränkung:** Die
+automatische Rufmuster-Erkennung im Decoder (`findOnset()`) sucht die
+synthetisierten Ruf-Töne per Matched-Filter und erkennt eine eigene Audiodatei
+dort nicht automatisch — diese Funktion ist nur zum Anhören/WAV-Export gedacht,
+nicht für den automatischen Encode→Decode-Rundweg.
+
 ## Quellen (ENIGMA-Klassifizierung)
 
 - sigidwiki.com — CIS MFSK-16 XPA2, P07 numbers station
@@ -144,6 +187,7 @@ Sequenz für dich nachvollziehbar/lesbar zu halten.
 - radiohobbyist.org / spynumbers.com — ENIGMA-Klassifizierungsschema allgemein
 - numbers-stations.com, radioespionage.net, radiohobbyist.org (3NOTE.HTM) — G04 "Three Note Oddity" (Herkunft, Sprache, Sendezeiten)
 - chordify.net — Akkordanalyse der Conet-Project-Aufnahme "Three Note Oddity" (c-Moll)
+- reddit.com/r/signalis, tvtropes.org (VideoGame/Signalis) — 512/739/899-Hz-Werte des im Spiel *Signalis* nachgebildeten G04-Rufs (Fan-Analyse der Spiel-Audiodatei, keine Original-Stationsmessung)
 
 ## Lizenz
 

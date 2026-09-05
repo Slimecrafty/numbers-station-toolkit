@@ -21,7 +21,7 @@
     <label style="margin-top:0;">Format-Stil</label>
     <select id="style">
       <option value="simple">Einfach — robuster 10-Ton-Code</option>
-      <option value="xpa2">XPA2-Stil — enge 15-Hz-Cluster, Sync alle 5</option>
+      <option value="xpa2">XPA2-Stil — 15,625-Hz-Cluster (Katalogwert), Sync alle 5</option>
       <option value="xpb">XPB-Stil — Multiton, 175-Hz-Raster</option>
       <option value="p07">P07-Stil (Vorschau)</option>
       <option value="mfsk_weak">MFSK-Schwachsignal (orthogonal)</option>
@@ -42,6 +42,19 @@
 
     <label>Ruf-Länge (Wiederholungen)</label>
     <input id="callRepeats" type="number" min="1" max="10" value="3">
+
+    <label>Ruf als eigene Audiodatei (optional)</label>
+    <input id="callAudioFile" type="file" accept="audio/*">
+    <div class="hint">Ersetzt NUR den synthetisierten Ruf-Teil oben durch deine eigene
+      Datei (z. B. selbst aufgenommen oder gemeinfrei) — ID/Anzahl/Zahlengruppen
+      danach werden weiterhin normal aus Tönen erzeugt. Wichtiger Hinweis: ich
+      liefere hier keine echte Original-Aufnahme (z. B. Conet-Project) mit, da die
+      urheberrechtlich geschützt ist — das musst du selbst beisteuern, falls
+      gewünscht. Bekannte Einschränkung: der automatische Decoder auf der
+      Decoder-Seite sucht den Rufanfang per Muster-Erkennung der synthetisierten
+      Ruf-Töne und findet eine eigene Audiodatei dort NICHT automatisch —
+      diese Kombination ist nur zum Anhören/Exportieren gedacht, nicht für den
+      automatischen Rundweg Encode→Decode.</div>
 
     <label>OTP-Verschlüsselung <input type="checkbox" id="otpToggle" style="width:auto;vertical-align:middle;"></label>
     <div class="hint">An: Klartext eingeben, wird über Alphabet + Pad (Schlüssel) zu Ziffern. Aus: direkt Ziffern eingeben.</div>
@@ -65,7 +78,7 @@
     <select id="baud">
       <option value="4">4 Bd — Schwachsignal (mit MFSK-Schwachsignal-Stil kombinieren)</option>
       <option value="5">5 Bd — sehr robust / leise nutzbar</option>
-      <option value="7.5" selected>7.5 Bd — wie reales XPA2</option>
+      <option value="7.8125" selected>7,8125 Bd — exakter ENIGMA-Katalogwert XPA2</option>
       <option value="16">16 Bd — schneller (XPB-Bereich)</option>
     </select>
     <div class="hint" id="dspWarn" style="color:#f0a742;"></div>
@@ -102,6 +115,11 @@ function updateStyleHint(){
     // Wert vorschlagen (orthogonale Bedingung profitiert von langer Symboldauer).
     if($("style").value === "mfsk_weak" && $("baud").value !== "4"){
       $("baud").value = "4";
+    }
+    // XPA2-Stil: Baudrate automatisch auf den exakten Katalogwert (7,8125 Bd)
+    // vorschlagen, statt den zuvor gewählten Wert stehen zu lassen.
+    if($("style").value === "xpa2" && $("baud").value !== "7.8125"){
+      $("baud").value = "7.8125";
     }
   } catch(err){
     console.error("Style-Hinweis konnte nicht gesetzt werden:", err);
@@ -172,16 +190,28 @@ let lastBuf = null;
 // Kontinuierliche Phase: EIN durchgehender Oszillator für die gesamte
 // Sequenz. Frequenzwechsel zwischen Symbolen laufen über kurze
 // linearRampToValueAtTime-Übergänge (paar ms) statt Ton-für-Ton neu zu
-// starten — dadurch bleibt die Phase durchgehend und es klingt auch bei
-// hoher Baudrate (z. B. XPA2) nicht mehr "geblockt"/gestückelt. Die
-// Amplitude wird nur bei echten Pausen (freq===null) auf 0 gefahren.
+// starten — dadurch bleibt die Phase durchgehend. Die Amplitude wird nur
+// bei echten Pausen (freq===null) auf 0 gefahren.
+//
+// NACHTRAG (Fix "klingt wie einzelne Bauklötze"): reine Frequenz-Ramps
+// allein reichen nicht, um Ton-zu-Ton-Wechsel bei offenem Gate weich
+// klingen zu lassen — das Ohr ist auf Lautstärkesprünge empfindlicher
+// als auf reine Tonhöhenänderung, und ein 4-ms-Frequenz-Sprung zwischen
+// zwei deutlich verschiedenen Tönen (z. B. 512→739 Hz im Ruf-Motiv)
+// wird trotz Ramp als harter "Klick"/Block wahrgenommen. Fix: bei JEDEM
+// Ton-zu-Ton-Wechsel (nicht nur an echten Pausen) läuft jetzt zusätzlich
+// ein kurzer, zum Frequenz-Ramp synchroner Amplituden-"Dip" (kein voller
+// Cut, nur ein Einsacken auf ~80% und zurück) — das kaschiert den
+// Übergang, ohne die durchgehende Phase/das MFSK-Timing zu stören.
 function renderBuffer(events, gainDb){
   const totalDur = events.reduce((s,e)=>s+e.dur,0);
   const totalSamples = Math.ceil(totalDur * SAMPLE_RATE) + 200;
   const ctxOff = new OfflineAudioContext(1, totalSamples, SAMPLE_RATE);
   const gainLin = Math.pow(10, gainDb/20);
-  const freqRamp = 0.004;   // sanfter Frequenz-Übergang zwischen Symbolen
-  const silenceFade = 0.006; // Ein-/Ausblenden nur an echten Pausen
+  const freqRamp = 0.006;   // sanfter Frequenz-Übergang zwischen Symbolen (vorher 4ms)
+  const dipRamp = freqRamp / 2; // Amplituden-Dip synchron zur ersten Hälfte des Freq-Ramps
+  const dipDepth = 0.8;         // 80% statt 100% während des Wechsels
+  const silenceFade = 0.006; // Ein-/Ausblenden an echten Pausen
 
   const osc = ctxOff.createOscillator();
   osc.type = "sine";
@@ -190,6 +220,7 @@ function renderBuffer(events, gainDb){
 
   let t = 0;
   let gateOpen = false;
+  let lastToneFreq = null;
   // Startfrequenz setzen (erstes Ereignis mit Ton, sonst egal)
   const firstTone = events.find(e=>e.freq);
   osc.frequency.setValueAtTime(firstTone ? firstTone.freq : 800, 0);
@@ -201,14 +232,20 @@ function renderBuffer(events, gainDb){
         g.gain.setValueAtTime(0, start);
         g.gain.linearRampToValueAtTime(gainLin, start+silenceFade);
         gateOpen = true;
+      } else if(lastToneFreq !== null && lastToneFreq !== ev.freq){
+        g.gain.setValueAtTime(gainLin, start);
+        g.gain.linearRampToValueAtTime(gainLin*dipDepth, start+dipRamp);
+        g.gain.linearRampToValueAtTime(gainLin, start+freqRamp);
       }
       osc.frequency.linearRampToValueAtTime(ev.freq, start+freqRamp);
+      lastToneFreq = ev.freq;
     } else {
       if(gateOpen){
         g.gain.setValueAtTime(gainLin, start);
         g.gain.linearRampToValueAtTime(0, start+silenceFade);
         gateOpen = false;
       }
+      lastToneFreq = null;
     }
     t = end;
   });
@@ -275,6 +312,31 @@ function bufferToWav(buf){
 
 let audioCtx = null;
 
+// Custom-Ruf-Audiodatei: dekodiert direkt mit SAMPLE_RATE (8000 Hz), damit sie
+// sample-genau vor den Ton-Puffer passt, ohne die Wiedergabe zu verlangsamen/
+// beschleunigen (Browser resampled beim decodeAudioData automatisch auf die
+// sampleRate des übergebenen Contexts).
+async function decodeCustomCallAudio(file){
+  const arrBuf = await file.arrayBuffer();
+  const tmpCtx = new OfflineAudioContext(1, 1, SAMPLE_RATE);
+  const decoded = await tmpCtx.decodeAudioData(arrBuf);
+  // Auf 1 Kanal reduzieren (Mono), falls die Datei Stereo ist.
+  if(decoded.numberOfChannels === 1) return decoded.getChannelData(0);
+  const ch0 = decoded.getChannelData(0), ch1 = decoded.getChannelData(1);
+  const mono = new Float32Array(decoded.length);
+  for(let i=0;i<decoded.length;i++) mono[i] = (ch0[i]+ch1[i])/2;
+  return mono;
+}
+
+function concatBuffers(ctx, ...parts){
+  const totalLen = parts.reduce((s,p)=>s+p.length, 0);
+  const out = ctx.createBuffer(1, totalLen, SAMPLE_RATE);
+  const ch = out.getChannelData(0);
+  let off = 0;
+  for(const p of parts){ ch.set(p, off); off += p.length; }
+  return out;
+}
+
 $("playBtn").addEventListener("click", async () => {
   const id3 = ($("stationId").value.match(/\d/g)||[]).slice(0,3).join("").padEnd(3,"0");
   const msg = ($("message").value.match(/\d/g)||[]).join("");
@@ -290,16 +352,37 @@ $("playBtn").addEventListener("click", async () => {
   $("playBtn").disabled = true;
   $("playBtn").textContent = "Rendere…";
 
-  const events = buildSequence(style, baud, id3, msg, callPattern, callRepeats);
-  const {buf, duration} = await renderBuffer(events, gainDb);
-  lastBuf = buf;
+  const allEvents = buildSequence(style, baud, id3, msg, callPattern, callRepeats);
+  const customFile = $("callAudioFile").files[0];
 
+  let buf, duration;
+  audioCtx = audioCtx || new (window.AudioContext||window.webkitAudioContext)();
+
+  if(customFile){
+    // Ruf-/Pause-Ereignisse (der synthetisierte Rufteil) rauswerfen — der Rest
+    // (id/count/data/sync/outro) bleibt exakt wie gehabt.
+    const firstDataIdx = allEvents.findIndex(e => e.kind === "id");
+    const dataOnlyEvents = firstDataIdx === -1 ? allEvents : allEvents.slice(firstDataIdx);
+    const { buf: toneBuf, duration: toneDur } = await renderBuffer(dataOnlyEvents, gainDb);
+
+    const customSamples = await decodeCustomCallAudio(customFile);
+    const gapSamples = new Float32Array(Math.round(0.15 * SAMPLE_RATE)); // 150ms Stille als Übergang
+    buf = concatBuffers(audioCtx, customSamples, gapSamples, toneBuf.getChannelData(0));
+    duration = customSamples.length/SAMPLE_RATE + gapSamples.length/SAMPLE_RATE + toneDur;
+    // logSequence() filtert auf e.freq truthy — Marker-Zeile separat davorsetzen:
+    logSequence(dataOnlyEvents);
+    $("log").textContent = `[eigene Audiodatei: ${customFile.name}]\n` + $("log").textContent;
+  } else {
+    const { buf: renderedBuf, duration: renderedDur } = await renderBuffer(allEvents, gainDb);
+    buf = renderedBuf; duration = renderedDur;
+    logSequence(allEvents);
+  }
+
+  lastBuf = buf;
   drawScope(buf);
-  logSequence(events);
   $("durLabel").textContent = `Dauer: ${duration.toFixed(2)} s`;
   $("wavBtn").disabled = false;
 
-  audioCtx = audioCtx || new (window.AudioContext||window.webkitAudioContext)();
   const src = audioCtx.createBufferSource();
   src.buffer = buf;
   src.connect(audioCtx.destination);

@@ -108,5 +108,31 @@ canvas{width:100%;height:130px;background:#070806;border:1px solid var(--panel-e
 #gate .box{
   width:280px;background:#12140f;border:1px solid var(--panel-edge);border-radius:4px;padding:22px;
 }
-#gate h2{font-family:var(--mono);color:var(--phosphor);font-size:.95rem;margin:0 0 12px;}
-#gate .err{color:var(--red);font-size:.75rem;margin-top:8px;min-height:1em;}
+#gate h2{font-family:var(--mono);color:var(--phosphor);font-size:.95rem;margin:0 0 12px;letter-spacing:2px;text-align:center;}
+#gate .err{color:var(--red);font-size:.75rem;margin-top:8px;min-height:1em;text-align:center;}
+
+/* PIN-Pad (Türsprechanlagen-Stil) */
+#gate .pindots{
+  display:flex;gap:10px;justify-content:center;margin:4px 0 18px;
+}
+#gate .pindots span{
+  width:14px;height:14px;border-radius:50%;border:1px solid var(--phosphor-dim);
+  background:transparent;transition:background .1s;
+}
+#gate .pindots span.filled{background:var(--phosphor);border-color:var(--phosphor);}
+#gate .pindots.shake{animation:pinshake .3s;}
+@keyframes pinshake{
+  0%,100%{transform:translateX(0);}
+  25%{transform:translateX(-6px);}
+  75%{transform:translateX(6px);}
+}
+#gate .padgrid{
+  display:grid;grid-template-columns:repeat(3,1fr);gap:8px;
+}
+#gate .padgrid button{
+  font-family:var(--mono);font-size:1.1rem;color:var(--phosphor);
+  background:#0d0f0a;border:1px solid var(--panel-edge);border-radius:4px;
+  padding:14px 0;cursor:pointer;
+}
+#gate .padgrid button:active{background:#122115;border-color:var(--phosphor-dim);}
+#gate .padgrid button.wide{grid-column:span 1;font-size:.8rem;color:#8b9280;}

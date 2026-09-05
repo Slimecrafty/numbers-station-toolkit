@@ -37,16 +37,55 @@ const STYLES = {
     hint: "Reales P07 nutzt FSK/BPSK-Intro + QPSK-OFDM-Datenteil. Hier nur die FSK-Ebene, OFDM folgt später.",
     base: 700, step: 120, sync: 2600,
   },
+  mfsk_weak: {
+    label: "MFSK-Schwachsignal (orthogonal)",
+    hint: "Ton-Abstand wird automatisch = Baudrate gesetzt (orthogonale MFSK-Bedingung — das ist das reale Prinzip hinter Schwachsignal-Digimodes wie MFSK16/Olivia, kein beliebiges Hz-Raster). Niedrige Baudrate (z. B. 4 Bd) bedeutet lange Symboldauer → mehr Energie pro Symbol im schmalen Goertzel-Fenster → im Decoder auch bei starkem Rauschen/leisem Signal noch auswertbar. Reales Vorbild nutzt zusätzlich Vorwärts-Fehlerkorrektur — hier bewusst weggelassen, um die Sequenz für dich lesbar zu halten.",
+    base: 350, orthogonal: true, syncEvery: 5,
+  },
 };
+
+/**
+ * Löst einen Style für eine konkrete Baudrate auf. Für normale Styles
+ * unverändert; für `orthogonal`-Styles (aktuell: mfsk_weak) wird `step`
+ * live aus der Baudrate berechnet.
+ *
+ * WICHTIG (ehrlich, nicht nur behauptet — per E2E-Test verifiziert):
+ * Die lehrbuchmäßige orthogonale Bedingung wäre step = baud EXAKT, aber
+ * das gilt nur für ein Analysefenster von genau einer vollen Symboldauer.
+ * decodeSymbols() nutzt hier bewusst nur 80% der Symboldauer als Fenster
+ * (Rest ist Timing-Jitter-Reserve) — das verschlechtert die effektive
+ * Frequenzauflösung auf 1/(0.8·T) = 1.25·baud. Bei step=baud exakt lag
+ * das Fenster also UNTER der eigenen "DSP-Grenze"-Formel weiter oben in
+ * dieser Datei (durchgefallen im Test: Ziffern-Verwechslungen). step wird
+ * deshalb mit demselben 1.3er-Sicherheitsfaktor wie bei den anderen
+ * Styles berechnet — das ist die engste Stafflung, die mit dem
+ * bestehenden Decoder-Zeitfenster noch zuverlässig funktioniert, nicht
+ * die idealisierte (und in der Praxis zu knappe) Lehrbuch-Minimalgrenze.
+ */
+function resolveStyle(style, baud) {
+  if (!style.orthogonal) return style;
+  const safetyFactor = 1.3;
+  const step = baud * safetyFactor;
+  return { ...style, step, sync: style.base - step };
+}
 
 // Ruf/Intro-Muster jetzt unabhängig vom Zahlen-Format-Stil wählbar.
 // Jedes Muster bleibt aus drei *unterschiedlichen* Tönen bestehen (siehe
 // Hinweis oben zur Onset-Erkennung) — das gilt unabhängig davon, mit
 // welchem Format-Stil die Zahlengruppen dahinter codiert werden.
 const CALL_PATTERNS = {
+  // Angelehnt an G04 "Three Note Oddity" (vermutlich ungarischer Nachrichtendienst,
+  // Sendungen bis 2005). Laut Akkordanalyse der Conet-Project-Aufnahme steht das
+  // Motiv in c-Moll; Originalbeschreibungen nennen tiefe, langsame elektronische
+  // Töne mit starkem Rauschanteil — nicht die hohen, kurzen Digital-Blips, die
+  // hier vorher standen. Exakte Hz-Werte der realen Aufnahme sind nirgends
+  // spektral vermessen veröffentlicht — das hier ist eine auf Tonart + Beschreibung
+  // gestützte, ehrliche Annäherung, keine Reproduktion einer Messung.
   threeToneNumbers: {
-    label: "3-Ton-Nummernstation (klassisch)",
-    freqs: [850, 1150, 1450],
+    label: "3-Ton-Nummernstation / „Three Note Oddity“ (G04-Vorbild)",
+    freqs: [392.0, 311.13, 261.63], // G4–Es4–C4, absteigendes Moll-Motiv
+    noteDur: 0.45, // eigene, baudraten-unabhängige Dauer — echtes Vorbild ist ein
+                   // langsames Melodie-Motiv, kein an die Datenrate gekoppelter Blip
   },
   xpa2: {
     label: "XPA2-Ruf",
@@ -103,10 +142,15 @@ function buildSequence(style, baud, id3, msgDigits, callPattern, callRepeats) {
   const events = [];
   const push = (freq, dur, kind) => events.push({ freq, dur, kind });
 
-  // 1. Callup: three-tone pattern, repeated callRepeats times
+  // 1. Callup: three-tone pattern, repeated callRepeats times.
+  // Manche Rufmuster (z. B. "Three Note Oddity") haben eine eigene, von der
+  // Baudrate unabhängige Notendauer (noteDur) — reales Vorbild ist ein
+  // langsames Melodie-Motiv, keine an die Datenrate gekoppelte Ton-Folge.
+  const callNoteDur = callPattern.noteDur || symDur * 1.1;
+  const callPauseDur = callPattern.noteDur ? callNoteDur * 0.35 : symDur * 0.4;
   for (let r = 0; r < callRepeats; r++) {
-    callPattern.freqs.forEach((f) => push(f, symDur * 1.1, "ruf"));
-    push(null, symDur * 0.4, "pause");
+    callPattern.freqs.forEach((f) => push(f, callNoteDur, "ruf"));
+    push(null, callPauseDur, "pause");
   }
   push(null, symDur * 2, "pause");
 
@@ -244,7 +288,7 @@ function otpDecode(cipherDigits, padDigits) {
 
 if (typeof module !== "undefined") {
   module.exports = {
-    SAMPLE_RATE, STYLES, CALL_PATTERNS, digitFreq, dspLimitWarning, buildSequence, goertzel,
+    SAMPLE_RATE, STYLES, CALL_PATTERNS, digitFreq, resolveStyle, dspLimitWarning, buildSequence, goertzel,
     OTP_ALPHABET, textToDigits, digitsToText, generatePad, otpEncode, otpDecode,
   };
 }

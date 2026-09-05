@@ -18,15 +18,10 @@
  *          .then(b => console.log(Array.from(new Uint8Array(b))
  *            .map(x => x.toString(16).padStart(2,'0')).join('')))
  *   2. Copy the resulting hex string into PASSWORD_HASH below.
- *
- * Default password is "changeme" — change it before publishing.
  */
 
 const PASSWORD_HASH =
-  "0900fd45964d090ac695b7dee9d3e232ce548ce1494ecb182ac9c2b3c9350dbb"; // placeholder, see below
-// NOTE: replace with your own hash generated as described above.
-// The placeholder above is intentionally NOT a valid hash of "changeme"
-// so you are forced to generate your own before the gate will open.
+  "bf7b0ead279760f89777a5c87858171765a95d66f0265006b9e992a2154401e9";
 
 async function sha256Hex(text) {
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));

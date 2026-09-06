@@ -25,6 +25,7 @@
       <option value="xpb">XPB-Stil — Multiton, 175-Hz-Raster</option>
       <option value="p07">P07-Stil (Vorschau)</option>
       <option value="mfsk_weak">MFSK-Schwachsignal (orthogonal)</option>
+      <option value="cb_weak">CB/AM-Schwachsignal (weiter Ton-Abstand)</option>
     </select>
     <div class="hint" id="styleHint"></div>
 
@@ -78,8 +79,10 @@
     <select id="baud">
       <option value="4">4 Bd — Schwachsignal (mit MFSK-Schwachsignal-Stil kombinieren)</option>
       <option value="5">5 Bd — sehr robust / leise nutzbar</option>
+      <option value="2">2 Bd — sehr langsam (CB/AM-Schwachsignal-Stil)</option>
       <option value="7.8125" selected>7,8125 Bd — exakter ENIGMA-Katalogwert XPA2</option>
-      <option value="16">16 Bd — schneller (XPB-Bereich)</option>
+      <option value="62.5">62,5 Bd — ENIGMA-Katalogwert P07 (FSK-Ebene)</option>
+      <option value="65.79">65,79 Bd — ENIGMA-Katalogwert XPB</option>
     </select>
     <div class="hint" id="dspWarn" style="color:#f0a742;"></div>
 
@@ -120,6 +123,18 @@ function updateStyleHint(){
     // vorschlagen, statt den zuvor gewählten Wert stehen zu lassen.
     if($("style").value === "xpa2" && $("baud").value !== "7.8125"){
       $("baud").value = "7.8125";
+    }
+    // XPB-Stil: Katalogwert ~65,79 Bd automatisch vorschlagen.
+    if($("style").value === "xpb" && $("baud").value !== "65.79"){
+      $("baud").value = "65.79";
+    }
+    // P07-Stil: Katalogwert der FSK-Ebene, 62,5 Bd, automatisch vorschlagen.
+    if($("style").value === "p07" && $("baud").value !== "62.5"){
+      $("baud").value = "62.5";
+    }
+    // CB/AM-Schwachsignal-Stil: sehr niedrige Baudrate automatisch vorschlagen.
+    if($("style").value === "cb_weak" && $("baud").value !== "2"){
+      $("baud").value = "2";
     }
   } catch(err){
     console.error("Style-Hinweis konnte nicht gesetzt werden:", err);

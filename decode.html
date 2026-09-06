@@ -29,14 +29,17 @@
       <option value="xpb">XPB-Stil</option>
       <option value="p07">P07-Stil (Vorschau)</option>
       <option value="mfsk_weak">MFSK-Schwachsignal (orthogonal)</option>
+      <option value="cb_weak">CB/AM-Schwachsignal (weiter Ton-Abstand)</option>
     </select>
 
     <label>Baudrate (muss zum Sender passen)</label>
     <select id="baud">
       <option value="4">4 Bd — Schwachsignal</option>
       <option value="5">5 Bd</option>
+      <option value="2">2 Bd — CB/AM-Schwachsignal-Stil</option>
       <option value="7.8125" selected>7,8125 Bd — exakter Katalogwert XPA2</option>
-      <option value="16">16 Bd</option>
+      <option value="62.5">62,5 Bd — Katalogwert P07 (FSK-Ebene)</option>
+      <option value="65.79">65,79 Bd — Katalogwert XPB</option>
     </select>
 
     <label>Ruf/Intro (muss zum Sender passen)</label>

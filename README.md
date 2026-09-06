@@ -60,8 +60,9 @@ python3 -m http.server 8000
 |--------|-----------------------|--------------------------|--------------|
 | simple | 150 Hz Abstand        | fester Extra-Ton         | eigene, robuste Variante |
 | xpa2   | 15,625 Hz Abstand (eng, exakter Katalogwert) | alle 5 Ziffern, 15,625 Hz unter Null | XPA2 (USB, 14-Ton-MFSK, 7,8125 Bd, Moskau/Russland) |
-| xpb    | 175 Hz Abstand (weit) | fester Extra-Ton         | XPB / XPB1 |
-| p07    | 120 Hz Abstand        | fester Extra-Ton         | P07 (nur FSK-Ebene) |
+| xpb    | 175 Hz Abstand (weit) | fester Extra-Ton         | XPB (USB, 16-Ton-MFSK, ~65,79 Bd) |
+| p07    | 125 Hz Abstand        | fester Extra-Ton         | P07 (nur FSK-Ebene; real: 8-Ton-OFDM/QPSK 62,5 Bd + BPSK 250 Bd) |
+| cb_weak| Baudrate × 1,6 (orthogonal) | alle 4 Ziffern     | eigener Stil für schwache CB-/AM-/FM-Signale |
 
 Alle Frequenzen liegen im Sprachband (~300–3000 Hz), damit die Sequenz über
 normale AM/FM/SSB-Sprachkanäle übertragbar bleibt.
@@ -178,6 +179,37 @@ synthetisierten Ruf-Töne per Matched-Filter und erkennt eine eigene Audiodatei
 dort nicht automatisch — diese Funktion ist nur zum Anhören/WAV-Export gedacht,
 nicht für den automatischen Encode→Decode-Rundweg.
 
+**7. Ruf "Three Note Oddity" (G04) — erneut korrigiert, jetzt mit belastbarer Quelle:**
+950/1400/1800 Hz statt 512/739/899 Hz. Quelle: Buch *Shadows of the State*
+(siehe Link unten) — demzufolge sind die drei aufsteigenden Töne direkt aus
+dem genormten Special Information Tone (SIT) des internationalen Telefonnetzes
+übernommen, nicht frei erfunden. Das ist eine belastbarere Quelle als die
+vorherige Fan-Community-Schätzung (512/739/899 Hz, aus einer Spiel-Audiodatei
+abgeleitet) und ersetzt diese.
+
+**8. XPB/P07: Baudraten- und Ton-Abstand-Korrektur nach ENIGMA-Katalogdaten:**
+Werte vom Nutzer direkt aus dem ENIGMA-Katalog bereitgestellt (nicht
+eigenständig gegenkontrolliert): XPB = USB, 16-Ton-MFSK, **~65,79 Bd**,
+**175 Hz** Ton-Abstand (Ton-Abstand stimmte bereits, Baudraten-Vorschlag in
+Encoder/Decoder war vorher falsch auf "16 Bd" gesetzt — jetzt 65,79 Bd,
+automatischer Vorschlag beim Umschalten auf XPB-Stil). P07 = USB, 8-Ton-OFDM,
+QPSK, **62,5 Bd**, **125 Hz** Ton-Abstand + separate BPSK-Lage 250 Bd (Ton-
+Abstand war vorher 120 Hz statt 125 Hz; hier weiterhin nur die FSK/Ton-Ebene
+nachgebildet, OFDM/QPSK/BPSK-Datenlage NICHT implementiert — daher
+"Vorschau"-Label). Wichtig: der ENIGMA-Katalog führt für keine der drei
+Stile (XPA2/XPB/P07) ein Feld für tatsächliche Ruf/Intro-Frequenzen
+("Voice"/"Frequencies": N/A) — die CALL_PATTERNS-Werte für diese drei Rufe
+bleiben deshalb unbestätigte Hobbyist-Näherungen, anders als der G04-Ruf
+oben (Punkt 7), für den es eine echte Quelle gibt.
+
+**9. Neuer Stil "CB/AM-Schwachsignal (weiter Ton-Abstand)":** zusätzlich zu
+"MFSK-Schwachsignal (orthogonal)", speziell für sehr schwache CB-/AM-/FM-
+Signale zugeschnitten: Ton-Abstand = 1,6× Baudrate (statt 1,3×) für mehr
+Rauschreserve auf Kosten von etwas mehr Bandbreite, Basisfrequenz mittig im
+typischen CB-/AM-Durchlassbereich (300–2700 Hz). Empfohlen: sehr niedrige
+Baudrate (2 Bd, wird beim Umschalten auf diesen Stil automatisch
+vorgeschlagen).
+
 ## Quellen (ENIGMA-Klassifizierung)
 
 - sigidwiki.com — CIS MFSK-16 XPA2, P07 numbers station
@@ -187,7 +219,8 @@ nicht für den automatischen Encode→Decode-Rundweg.
 - radiohobbyist.org / spynumbers.com — ENIGMA-Klassifizierungsschema allgemein
 - numbers-stations.com, radioespionage.net, radiohobbyist.org (3NOTE.HTM) — G04 "Three Note Oddity" (Herkunft, Sprache, Sendezeiten)
 - chordify.net — Akkordanalyse der Conet-Project-Aufnahme "Three Note Oddity" (c-Moll)
-- reddit.com/r/signalis, tvtropes.org (VideoGame/Signalis) — 512/739/899-Hz-Werte des im Spiel *Signalis* nachgebildeten G04-Rufs (Fan-Analyse der Spiel-Audiodatei, keine Original-Stationsmessung)
+- reddit.com/r/signalis, tvtropes.org (VideoGame/Signalis) — 512/739/899-Hz-Werte des im Spiel *Signalis* nachgebildeten G04-Rufs (Fan-Analyse der Spiel-Audiodatei, keine Original-Stationsmessung, mittlerweile ersetzt, siehe Punkt 7 oben)
+- dokumen.pub — Buch *Shadows of the State*, Quelle für 950/1400/1800 Hz (SIT-Ton-Herkunft des G04-Rufs)
 
 ## Lizenz
 

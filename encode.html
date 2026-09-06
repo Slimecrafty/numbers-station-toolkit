@@ -26,6 +26,8 @@
       <option value="p07">P07-Stil (Vorschau)</option>
       <option value="mfsk_weak">MFSK-Schwachsignal (orthogonal)</option>
       <option value="cb_weak">CB/AM-Schwachsignal (weiter Ton-Abstand)</option>
+      <option value="f06a">F06a-Stil (2-Ton-FSK, Bit-Ebene)</option>
+      <option value="f07">F07-Stil (Vorschau, ein MFSK-Kanal)</option>
     </select>
     <div class="hint" id="styleHint"></div>
 
@@ -38,6 +40,7 @@
       <option value="xpa2">XPA2-Ruf</option>
       <option value="xpb">XPB-Ruf</option>
       <option value="p07">P07-Ruf (Vorschau)</option>
+      <option value="f07">F07-Ruf (reale Callup-Sequenz, ohne Barker)</option>
     </select>
     <div class="hint">Ruf ist unabhängig vom Format-Stil unten wählbar — z. B. XPA2-Zahlencode mit 3-Ton-Ruf kombinierbar.</div>
 
@@ -83,6 +86,8 @@
       <option value="7.8125" selected>7,8125 Bd — exakter ENIGMA-Katalogwert XPA2</option>
       <option value="62.5">62,5 Bd — ENIGMA-Katalogwert P07 (FSK-Ebene)</option>
       <option value="65.79">65,79 Bd — ENIGMA-Katalogwert XPB</option>
+      <option value="10">10 Bd — ENIGMA-Katalogwert F07 (ein MFSK-Kanal)</option>
+      <option value="200">200 Bd — ENIGMA-Katalogwert F06a (Bit-Rate)</option>
     </select>
     <div class="hint" id="dspWarn" style="color:#f0a742;"></div>
 
@@ -135,6 +140,14 @@ function updateStyleHint(){
     // CB/AM-Schwachsignal-Stil: sehr niedrige Baudrate automatisch vorschlagen.
     if($("style").value === "cb_weak" && $("baud").value !== "2"){
       $("baud").value = "2";
+    }
+    // F07-Stil: Katalogwert der MFSK-Ebene, 10 Bd, automatisch vorschlagen.
+    if($("style").value === "f07" && $("baud").value !== "10"){
+      $("baud").value = "10";
+    }
+    // F06a-Stil: Katalogwert 200 Bd (= Bit-Rate, nicht Ziffer-Rate) automatisch vorschlagen.
+    if($("style").value === "f06a" && $("baud").value !== "200"){
+      $("baud").value = "200";
     }
   } catch(err){
     console.error("Style-Hinweis konnte nicht gesetzt werden:", err);

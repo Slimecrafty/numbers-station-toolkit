@@ -210,6 +210,40 @@ typischen CB-/AM-Durchlassbereich (300–2700 Hz). Empfohlen: sehr niedrige
 Baudrate (2 Bd, wird beim Umschalten auf diesen Stil automatisch
 vorgeschlagen).
 
+**10. Neue Stile F06a und F07, plus echter F07-Ruf:**
+
+- **F06a** ist im echten Vorbild kein Mehrton-MFSK wie die anderen Stile,
+  sondern echtes binäres 2-Ton-FSK (Mark/Space), das laut ENIGMA-Katalog
+  benannte Binärdateien überträgt (Frequencies-Feld dort leer/N/A, Emission
+  mode: FSK, 200 Bd, 1000 Hz, ACF=288). Die beiden Ton-Frequenzen (1500 Hz /
+  2500 Hz, Shift 1000 Hz) stammen NICHT aus dem Katalog, sondern wurden per
+  FFT/Goertzel-Analyse einer vom Nutzer bereitgestellten echten Aufnahme
+  (f06a-14643usb-20170315-1550z.wav) direkt vermessen — der Katalogwert
+  "1000 Hz" bezieht sich also auf den Shift, nicht auf eine Mitten-/
+  Basisfrequenz, wie die Messung zeigt. Hier ans bestehende
+  Zifferngruppen-Modell angepasst: jede Dezimalziffer wird als 4-Bit-Binärfolge
+  über die zwei FSK-Töne gesendet. Baudrate im Tool = Bit-Rate (Katalogwert
+  200 Bd), nicht Ziffer-Rate. **Ehrlicher Hinweis:** reales F06a überträgt
+  Dateien, keine Zifferngruppen — das ist hier eine Anpassung an das
+  bestehende Werkzeug-Modell, keine 1:1-Nachbildung des realen Protokolls.
+- **F07** ist im echten Vorbild ein mehrstufiges Format: FSK-Callup (1800/1200
+  Hz) → FSK-Barker-Sync (15,625 Bd, 875/2375 Hz) → PSK-Präambel → 5 parallele
+  16-Ton-MFSK-Kanäle (20 Hz Ton-Abstand, 10 Bd, 800–2380 Hz Gesamtbereich) →
+  FSK-Barker-Outro (15,625 Bd, 1500/1750 Hz), siehe priyom.org (Quelle unten).
+  Hier nur die reine Mehrton-Ebene nachgebildet (ein einzelner Kanal des
+  realen 5-Kanal-Systems: 20 Hz Abstand, Basis 800 Hz), analog zum
+  bestehenden P07-Stil — Barker/PSK/Mehrkanal-Teile fehlen, daher
+  "Vorschau"-Label. Der neue F07-Ruf bildet dafür die reale Callup-Sequenz
+  exakt nach: 1800 Hz (500 ms), 1200 Hz (1500 ms), 1800 Hz (500 ms), 1200 Hz
+  (1500 ms), 1000 Hz (100 ms) — mit ungleichen Tondauern, im Unterschied zu
+  den anderen (gleichmäßig getakteten) Rufmustern. Die Katalog-Werte einer
+  b.wav-Beispielaufnahme des Nutzers stimmten bei eigener Spektralanalyse
+  nicht sauber mit einem einfachen gleichmäßigen Ton-Raster überein (vermutlich
+  wegen der oben beschriebenen Mehrkanal-/PSK-Struktur des echten Signals,
+  die dieses Werkzeug nicht vollständig nachbildet) — die hier verwendeten
+  20 Hz/800 Hz-Werte stammen daher aus der priyom.org-Dokumentation, nicht aus
+  einer eigenen Vermessung von b.wav.
+
 ## Quellen (ENIGMA-Klassifizierung)
 
 - sigidwiki.com — CIS MFSK-16 XPA2, P07 numbers station
@@ -221,6 +255,8 @@ vorgeschlagen).
 - chordify.net — Akkordanalyse der Conet-Project-Aufnahme "Three Note Oddity" (c-Moll)
 - reddit.com/r/signalis, tvtropes.org (VideoGame/Signalis) — 512/739/899-Hz-Werte des im Spiel *Signalis* nachgebildeten G04-Rufs (Fan-Analyse der Spiel-Audiodatei, keine Original-Stationsmessung, mittlerweile ersetzt, siehe Punkt 7 oben)
 - dokumen.pub — Buch *Shadows of the State*, Quelle für 950/1400/1800 Hz (SIT-Ton-Herkunft des G04-Rufs)
+- priyom.org/number-stations/digital/f07/protocol — F07-Protokollbeschreibung (Callup, Barker, PSK-Präambel, 5-Kanal-MFSK), Quelle für den F07-Ruf und die F07-MFSK-Parameter
+- ENIGMA-Katalogeintrag F06a (vom Nutzer bereitgestellt: FSK, 200 Bd, 1000 Hz Shift, ACF=288) — Ton-Frequenzen (1500/2500 Hz) selbst per FFT/Goertzel aus f06a-14643usb-20170315-1550z.wav vermessen, nicht aus dem Katalog
 
 ## Lizenz
 

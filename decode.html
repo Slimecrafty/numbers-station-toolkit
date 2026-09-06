@@ -30,6 +30,8 @@
       <option value="p07">P07-Stil (Vorschau)</option>
       <option value="mfsk_weak">MFSK-Schwachsignal (orthogonal)</option>
       <option value="cb_weak">CB/AM-Schwachsignal (weiter Ton-Abstand)</option>
+      <option value="f06a">F06a-Stil (2-Ton-FSK, Bit-Ebene)</option>
+      <option value="f07">F07-Stil (Vorschau, ein MFSK-Kanal)</option>
     </select>
 
     <label>Baudrate (muss zum Sender passen)</label>
@@ -40,6 +42,8 @@
       <option value="7.8125" selected>7,8125 Bd — exakter Katalogwert XPA2</option>
       <option value="62.5">62,5 Bd — Katalogwert P07 (FSK-Ebene)</option>
       <option value="65.79">65,79 Bd — Katalogwert XPB</option>
+      <option value="10">10 Bd — Katalogwert F07 (ein MFSK-Kanal)</option>
+      <option value="200">200 Bd — Katalogwert F06a (Bit-Rate)</option>
     </select>
 
     <label>Ruf/Intro (muss zum Sender passen)</label>
@@ -48,6 +52,7 @@
       <option value="xpa2">XPA2-Ruf</option>
       <option value="xpb">XPB-Ruf</option>
       <option value="p07">P07-Ruf (Vorschau)</option>
+      <option value="f07">F07-Ruf (reale Callup-Sequenz, ohne Barker)</option>
     </select>
     <label>Ruf-Länge (Wiederholungen, muss zum Sender passen)</label>
     <input id="callRepeats" type="number" min="1" max="10" value="3">
@@ -155,8 +160,15 @@ function findOnset(data, sampleRate, rufEvents, symDur){
 }
 
 // ---- Decode a batch of symbol events at known offsets ----
+// Bei binären Stilen (style.binary, z. B. F06a) werden nur 2 Kandidaten
+// (Mark/Space) statt 10 Ziffern-Kandidaten geprüft — ev.digit ist dann ein
+// einzelnes Bit (0/1), keine fertige Dezimalziffer. Siehe bitsToDigitString()
+// weiter unten, die mehrere Bit-Ergebnisse wieder zu Ziffern zusammensetzt.
 function decodeSymbols(data, sampleRate, style, startSample, events, robust){
   const results = [];
+  const candidates = style.binary
+    ? [{ d: 0, f: style.spaceFreq }, { d: 1, f: style.markFreq }]
+    : (() => { const c = []; for(let d=0; d<10; d++) c.push({d, f: digitFreq(style, d)}); return c; })();
   events.forEach(ev => {
     const centerStart = startSample + Math.round(ev.t0 * sampleRate);
     const winLenBase = Math.round(ev.dur * sampleRate * 0.8);
@@ -165,9 +177,6 @@ function decodeSymbols(data, sampleRate, style, startSample, events, robust){
     const offsets = robust
       ? [-0.02, -0.01, 0, 0.01, 0.02].map(o => Math.round(o * sampleRate))
       : [0];
-
-    const candidates = [];
-    for(let d=0; d<10; d++) candidates.push({d, f: digitFreq(style, d)});
 
     offsets.forEach(off => {
       const s = Math.max(0, centerStart + off);
@@ -185,6 +194,19 @@ function decodeSymbols(data, sampleRate, style, startSample, events, robust){
     results.push({ kind: ev.kind, digit: bestDigit, freq: bestFreq, confidence });
   });
   return results;
+}
+
+// Setzt bitsPerDigit aufeinanderfolgende Bit-Ergebnisse eines `kind` wieder zu
+// Dezimalziffern zusammen (Umkehrung der Encoder-Bit-Aufteilung). Fehlende/
+// unsichere Bits (digit==null) ergeben "?" für die ganze Ziffer.
+function bitsToDigitString(results, kind, bitsPerDigit){
+  const bits = results.filter(r => r.kind === kind).map(r => r.digit);
+  let out = "";
+  for(let i=0; i+bitsPerDigit<=bits.length; i+=bitsPerDigit){
+    const chunk = bits.slice(i, i+bitsPerDigit);
+    out += chunk.some(b => b==null) ? "?" : String(parseInt(chunk.join(""), 2));
+  }
+  return out;
 }
 
 // Turn a buildSequence() output into {kind, dur, t0} list (t0 = cumulative start time)
@@ -223,10 +245,16 @@ async function decodeBuffer(audioBuffer, style, baud, callPattern, callRepeats){
   const idCountEvents = scaffold1.filter(e => e.kind==="id" || e.kind==="count");
   const idCountResults = decodeSymbols(data, sampleRate, style, onset.sampleIndex, idCountEvents, robust);
 
-  const idDigits = idCountResults.filter(r=>r.kind==="id").map(r=>r.digit);
-  const countDigits = idCountResults.filter(r=>r.kind==="count").map(r=>r.digit);
-  const stationId = idDigits.map(d=>d==null?"?":d).join("");
-  const groupCount = parseInt(countDigits.map(d=>d==null?"0":d).join(""), 10) || 0;
+  const bpd = style.bitsPerDigit || 4; // nur relevant für binäre Stile (style.binary)
+  const stationId = style.binary
+    ? bitsToDigitString(idCountResults, "id", bpd)
+    : idCountResults.filter(r=>r.kind==="id").map(r=>r.digit==null?"?":r.digit).join("");
+  const groupCount = parseInt(
+    (style.binary
+      ? bitsToDigitString(idCountResults, "count", bpd)
+      : idCountResults.filter(r=>r.kind==="count").map(r=>r.digit==null?"0":r.digit).join("")
+    ).replace(/\?/g, "0"), 10
+  ) || 0;
 
   log.push(`Decodierte ID: ${stationId}`);
   log.push(`Decodierte Gruppenanzahl: ${groupCount}`);
@@ -240,16 +268,28 @@ async function decodeBuffer(audioBuffer, style, baud, callPattern, callRepeats){
   let out = [];
   let cleanDigits = "";
   let lowConfCount = 0;
-  dataResults.forEach(r => {
-    if(r.kind==="sync"){
-      out.push(r.confidence > 2 ? "|" : "|?");
-    } else {
+  if(style.binary){
+    // Bit-Ergebnisse zu Ziffern zusammensetzen; Log zeigt trotzdem die
+    // rohen Bits an (nützlich zum Debuggen von Bit-Fehlern), cleanDigits
+    // bekommt die zusammengesetzten Dezimalziffern für OTP/Anzeige.
+    cleanDigits = bitsToDigitString(dataResults, "data", bpd).replace(/\?/g, "0");
+    dataResults.forEach(r => {
       const shaky = r.confidence < 2.5;
       if(shaky) lowConfCount++;
       out.push(shaky ? `${r.digit}?` : `${r.digit}`);
-      cleanDigits += (r.digit==null ? "0" : r.digit);
-    }
-  });
+    });
+  } else {
+    dataResults.forEach(r => {
+      if(r.kind==="sync"){
+        out.push(r.confidence > 2 ? "|" : "|?");
+      } else {
+        const shaky = r.confidence < 2.5;
+        if(shaky) lowConfCount++;
+        out.push(shaky ? `${r.digit}?` : `${r.digit}`);
+        cleanDigits += (r.digit==null ? "0" : r.digit);
+      }
+    });
+  }
 
   log.push(`Symbole mit niedriger Konfidenz: ${lowConfCount} / ${dataResults.filter(r=>r.kind==="data").length}`);
 

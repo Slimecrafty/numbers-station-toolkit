@@ -81,19 +81,16 @@ function resolveStyle(style, baud) {
 // welchem Format-Stil die Zahlengruppen dahinter codiert werden.
 const CALL_PATTERNS = {
   // Angelehnt an G04 "Three Note Oddity" (vermutlich ungarischer Nachrichtendienst,
-  // Sendungen bis 2005). Frequenzwerte 512/739/899 Hz nutzergeliefert, mit Quellen
-  // (reddit.com/r/signalis-Thread + tvtropes.org, beide zum Videospiel "Signalis",
-  // das den echten G04-Ruf als Easter Egg referenziert/nachbaut). WICHTIG,
-  // Ehrlichkeit statt Übernahme ohne Prüfung: das sind Werte aus einer
-  // Fan-Community-Analyse der SPIEL-Audiodatei, keine spektral vermessene
-  // Original-Aufnahme der echten Station (Conet-Project) selbst — die
-  // Akkordanalyse der echten Aufnahme (c-Moll, siehe README-Quellen) nennt
-  // stattdessen einen tiefen, langsamen Klangcharakter. Diese drei Werte sind
-  // trotzdem hier eingesetzt, wie gewünscht — falls die echte Aufnahme später
-  // spektral geprüft wird, ggf. nochmal anpassen.
+  // Sendungen bis 2005). KORRIGIERT: die drei Töne sind laut Quelle (Buch
+  // "Shadows of the State", siehe README-Quellen) direkt aus dem genormten
+  // "Special Information Tone" (SIT) des internationalen Telefonnetzes
+  // übernommen — keine Fan-Schätzung mehr, sondern ein bekannter, genormter
+  // Tonsatz. Vorherige Werte (512/739/899 Hz) stammten nur aus einer
+  // Fan-Community-Analyse einer Spiel-Audiodatei (Signalis) und werden hiermit
+  // ersetzt.
   threeToneNumbers: {
     label: "3-Ton-Nummernstation / „Three Note Oddity“ (G04-Vorbild)",
-    freqs: [512, 739, 899],
+    freqs: [950, 1400, 1800], // SIT-Töne (Special Information Tone), steigend
     noteDur: 0.45, // eigene, baudraten-unabhängige Dauer — echtes Vorbild ist ein
                    // langsames Melodie-Motiv, kein an die Datenrate gekoppelter Blip
   },

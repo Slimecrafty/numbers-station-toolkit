@@ -7,6 +7,15 @@
  * numbers stations (E07 / V07 / M12 / XPA2 / XPB / P07) — see README.md
  * for sources. This is a hobbyist re-creation for CB/shortwave
  * experimentation, not a reproduction of any real station's traffic.
+ *
+ * XPA2/XPB/P07 Baudraten & Ton-Abstände (7,8125 Bd/15,625 Hz;
+ * ~65,79 Bd/175 Hz; 62,5 Bd/125 Hz) stammen aus vom Nutzer direkt
+ * bereitgestellten ENIGMA-Katalogdaten — nicht eigenständig von mir
+ * gegenkontrolliert. Die Ruf/Intro-Frequenzen (CALL_PATTERNS) für diese
+ * drei Stile sind weiterhin unbestätigte Hobbyist-Näherungen: der
+ * ENIGMA-Katalog listet dafür kein Feld für tatsächliche Ruf-Hz-Werte
+ * (Voice/Frequencies-Feld dort: N/A). Einzige Ausnahme mit belastbarer
+ * Quelle: der G04-"Three Note Oddity"-Ruf (siehe CALL_PATTERNS unten).
  */
 
 const SAMPLE_RATE = 8000; // voice-band, matches AM/FM/SSB voice channel bandwidth
@@ -35,13 +44,33 @@ const STYLES = {
   },
   xpb: {
     label: "XPB-Stil",
-    hint: "Weites Ton-Raster, 175 Hz Abstand (540–2115 Hz Bereich), angelehnt an reale XPB-Beschreibung.",
+    hint: "Ziffern-Töne 175 Hz Abstand (exakter ENIGMA-Katalogwert für XPB: USB, 16-Ton-MFSK, ~65,79 Bd). Baudrate unten wird beim Wechsel auf diesen Stil automatisch auf 65,79 Bd vorgeschlagen.",
     base: 540, step: 175, sync: 2290,
   },
+  // Korrigiert: ENIGMA-Katalogeintrag für P07 nennt 125 Hz Ton-Abstand
+  // (Datenlage laut Nutzer: USB, 8-Ton-OFDM, QPSK, 62,5 Bd, 125 Hz +
+  // zusätzliche BPSK-Lage, 250 Bd). Vorher stand hier ein ungenauer
+  // Näherungswert (120 Hz). Wie schon vorher hier nur die FSK/Ton-Ebene
+  // nachgebildet — die reale OFDM/QPSK+BPSK-Datenlage ist NICHT
+  // implementiert (siehe "Vorschau"-Label und README).
   p07: {
     label: "P07-Stil (Vorschau)",
-    hint: "Reales P07 nutzt FSK/BPSK-Intro + QPSK-OFDM-Datenteil. Hier nur die FSK-Ebene, OFDM folgt später.",
-    base: 700, step: 120, sync: 2600,
+    hint: "Reales P07 nutzt FSK/BPSK-Intro + QPSK-OFDM-Datenteil (ENIGMA-Katalogwert: 8-Ton-OFDM, QPSK, 62,5 Bd, 125 Hz Ton-Abstand + separate BPSK-Lage 250 Bd). Hier nur die FSK-Ebene mit 125 Hz Ton-Abstand, OFDM/QPSK/BPSK folgen später. Baudrate unten wird beim Wechsel auf diesen Stil automatisch auf 62,5 Bd vorgeschlagen.",
+    base: 700, step: 125, sync: 2600,
+  },
+  // Neuer Stil, unabhängig vom Ziffern-Format oben: für sehr schwache
+  // Signale speziell auf CB-/AM-/FM-Funk zugeschnitten (nicht nur "irgendein
+  // Schwachsignal-Modus" wie mfsk_weak, sondern mit größerer Sicherheitsmarge
+  // beim Ton-Abstand UND einer im Sprachband mittigeren Basisfrequenz, da CB-
+  // /AM-Funkgeräte typischerweise unterhalb von ~300 Hz und oberhalb von
+  // ~2700–3000 Hz stark filtern/dämpfen). safetyFactor 1.6 statt 1.3 gibt dem
+  // Goertzel-Analysefenster mehr Reserve gegen Rauschen/Fading, auf Kosten
+  // von etwas mehr Bandbreite pro Symbol — sinnvoll bei niedriger Baudrate
+  // (empfohlen: 2 Bd).
+  cb_weak: {
+    label: "CB/AM-Schwachsignal (weiter Ton-Abstand)",
+    hint: "Für sehr schwache CB-/AM-/FM-Signale: Ton-Abstand = 1,6× Baudrate (statt 1,3× bei MFSK-Schwachsignal) für mehr Rauschreserve, Basisfrequenz mittig im typischen CB-/AM-Durchlassbereich (300–2700 Hz). Empfohlen: sehr niedrige Baudrate (2 Bd). Baudrate unten wird beim Wechsel auf diesen Stil automatisch auf 2 Bd vorgeschlagen.",
+    base: 600, orthogonal: true, safetyFactor: 1.6, syncEvery: 4,
   },
   mfsk_weak: {
     label: "MFSK-Schwachsignal (orthogonal)",
@@ -70,7 +99,7 @@ const STYLES = {
  */
 function resolveStyle(style, baud) {
   if (!style.orthogonal) return style;
-  const safetyFactor = 1.3;
+  const safetyFactor = style.safetyFactor || 1.3;
   const step = baud * safetyFactor;
   return { ...style, step, sync: style.base - step };
 }

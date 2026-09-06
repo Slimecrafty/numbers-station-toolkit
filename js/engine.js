@@ -72,6 +72,37 @@ const STYLES = {
     hint: "Für sehr schwache CB-/AM-/FM-Signale: Ton-Abstand = 1,6× Baudrate (statt 1,3× bei MFSK-Schwachsignal) für mehr Rauschreserve, Basisfrequenz mittig im typischen CB-/AM-Durchlassbereich (300–2700 Hz). Empfohlen: sehr niedrige Baudrate (2 Bd). Baudrate unten wird beim Wechsel auf diesen Stil automatisch auf 2 Bd vorgeschlagen.",
     base: 600, orthogonal: true, safetyFactor: 1.6, syncEvery: 4,
   },
+  // F06a: reales Vorbild ist NICHT Mehrton-MFSK wie die Stile oben, sondern
+  // echtes binäres 2-Ton-FSK (Mark/Space), das laut ENIGMA-Katalog eigentlich
+  // benannte Binärdateien überträgt, keine 5er-Zifferngruppen. Hier trotzdem
+  // ins bestehende Zifferngruppen-Modell eingepasst: jede Dezimalziffer (0–9)
+  // wird als 4-Bit-Binärfolge über die zwei FSK-Töne gesendet (siehe
+  // `binary`/`pushDigitEvent` in diesem File). Frequenzwerte SELBST
+  // GEMESSEN (nicht aus dem Katalog übernommen) per Goertzel/FFT-Analyse
+  // einer vom Nutzer bereitgestellten echten Aufnahme
+  // (f06a-14643usb-20170315-1550z.wav): klare, durchgehende Zwei-Ton-Struktur
+  // bei 1500 Hz und 2500 Hz (Differenz 1000 Hz = der im Katalog genannte
+  // "1000 Hz"-Wert, der sich also auf den FSK-Shift bezieht, nicht auf eine
+  // Basis-/Mittenfrequenz). Baudrate laut Katalog: 200 Bd (hier: Bit-Rate,
+  // siehe Kommentar bei `pushDigitEvent`).
+  f06a: {
+    label: "F06a-Stil (2-Ton-FSK, Bit-Ebene)",
+    hint: "Echtes 2-Ton-FSK statt Mehrton-Raster: jede Ziffer wird als 4 Bit über genau zwei feste Töne gesendet (1500/2500 Hz, aus einer echten Aufnahme vermessen, Shift 1000 Hz laut ENIGMA-Katalog). Baudrate hier = Bit-Rate (Katalogwert 200 Bd), nicht Ziffer-Rate — die tatsächliche Ziffern-Rate ist also nur ein Viertel der eingestellten Baudrate. Reales F06a überträgt binäre Dateien, keine Zifferngruppen — hier ans bestehende Zifferngruppen-Modell angepasst.",
+    binary: true, markFreq: 1500, spaceFreq: 2500, bitsPerDigit: 4,
+  },
+  // F07: reales Vorbild ist ein mehrstufiges Format (FSK-Callup + FSK-Barker-
+  // Sync + PSK-Präambel + 5 parallele 16-Ton-MFSK-Kanäle, 20 Hz Abstand,
+  // 10 Bd, siehe README-Quellen). Dieser Stil bildet NUR die reine
+  // Mehrton-Ebene nach (ein einzelner Kanal des realen 5-Kanal-Systems,
+  // dieselbe Logik wie beim bestehenden P07-Stil): 16-Ton-Raster, 20 Hz
+  // Abstand, Basis 800 Hz (unterster dokumentierter Ton des realen
+  // Frequenzbereichs 800–2380 Hz). PSK/Barker/Mehrkanal-Teile fehlen —
+  // daher "Vorschau"-Label wie bei P07.
+  f07: {
+    label: "F07-Stil (Vorschau, ein MFSK-Kanal)",
+    hint: "Reales F07 nutzt FSK-Callup + FSK-Barker-Sync + PSK-Präambel + 5 parallele 16-Ton-MFSK-Kanäle (20 Hz Abstand, 10 Bd, 800–2380 Hz Gesamtbereich). Hier nur EIN Kanal dieser MFSK-Ebene nachgebildet (20 Hz Ton-Abstand, Basis 800 Hz) — Barker/PSK/Mehrkanal-Teile fehlen. Baudrate unten wird beim Wechsel auf diesen Stil automatisch auf 10 Bd vorgeschlagen.",
+    base: 800, step: 20, sync: 780,
+  },
   mfsk_weak: {
     label: "MFSK-Schwachsignal (orthogonal)",
     hint: "Ton-Abstand wird automatisch = Baudrate gesetzt (orthogonale MFSK-Bedingung — das ist das reale Prinzip hinter Schwachsignal-Digimodes wie MFSK16/Olivia, kein beliebiges Hz-Raster). Niedrige Baudrate (z. B. 4 Bd) bedeutet lange Symboldauer → mehr Energie pro Symbol im schmalen Goertzel-Fenster → im Decoder auch bei starkem Rauschen/leisem Signal noch auswertbar. Reales Vorbild nutzt zusätzlich Vorwärts-Fehlerkorrektur — hier bewusst weggelassen, um die Sequenz für dich lesbar zu halten.",
@@ -135,10 +166,56 @@ const CALL_PATTERNS = {
     label: "P07-Ruf (Vorschau)",
     freqs: [700, 820, 940],
   },
+  // Echte, dokumentierte F07-Callup-Sequenz (Quelle: priyom.org/F07-Protokoll,
+  // siehe README): 1800 Hz (500 ms), 1200 Hz (1500 ms), 1800 Hz (500 ms),
+  // 1200 Hz (1500 ms), 1000 Hz (100 ms) — ungleiche Tondauern, deshalb über
+  // `sequence` statt `freqs`+`noteDur` (siehe buildSequence). Der reale
+  // anschließende FSK-Barker (15,625 Bd, 875/2375 Hz) ist NICHT nachgebildet.
+  f07: {
+    label: "F07-Ruf (reale Callup-Sequenz, ohne Barker)",
+    sequence: [
+      { freq: 1800, dur: 0.5 },
+      { freq: 1200, dur: 1.5 },
+      { freq: 1800, dur: 0.5 },
+      { freq: 1200, dur: 1.5 },
+      { freq: 1000, dur: 0.1 },
+    ],
+  },
 };
 
 function digitFreq(style, d) {
   return style.base + d * style.step;
+}
+
+/**
+ * Zerlegt eine Dezimalziffer (0–9) in ihre Bit-Darstellung, MSB zuerst.
+ * Nur für `binary`-Stile (z. B. F06a) genutzt — dort wird jede Ziffer nicht
+ * als EIN Ton aus einem Mehrton-Raster gesendet (wie bei den anderen
+ * Stilen), sondern als Folge von Bits über zwei feste FSK-Töne
+ * (style.markFreq / style.spaceFreq), echtem 2-Ton-FSK entsprechend.
+ */
+function digitBits(d, bitsPerDigit) {
+  const bits = [];
+  for (let i = bitsPerDigit - 1; i >= 0; i--) bits.push((d >> i) & 1);
+  return bits;
+}
+
+/**
+ * Ein einzelnes Symbol-Ereignis erzeugen — entweder ein Mehrton-Symbol
+ * (normaler Fall, ein Ton pro Ziffer) oder, bei `style.binary`, eine Folge
+ * von Bit-Tönen (mehrere Ereignisse pro Ziffer, echtes 2-Ton-FSK).
+ * `symDur` ist bei binären Stilen die BIT-Dauer (1/Bitrate), nicht die
+ * Ziffer-Dauer — das entspricht der Katalog-Angabe "Bd" für F06a, die sich
+ * dort auf die Bitrate bezieht, nicht auf eine Ziffernrate.
+ */
+function pushDigitEvent(push, style, digit, symDur, kind) {
+  if (style.binary) {
+    digitBits(digit, style.bitsPerDigit || 4).forEach((b) => {
+      push(b ? style.markFreq : style.spaceFreq, symDur, kind);
+    });
+  } else {
+    push(digitFreq(style, digit), symDur, kind);
+  }
 }
 
 /**
@@ -182,16 +259,26 @@ function buildSequence(style, baud, id3, msgDigits, callPattern, callRepeats) {
   // Manche Rufmuster (z. B. "Three Note Oddity") haben eine eigene, von der
   // Baudrate unabhängige Notendauer (noteDur) — reales Vorbild ist ein
   // langsames Melodie-Motiv, keine an die Datenrate gekoppelte Ton-Folge.
-  const callNoteDur = callPattern.noteDur || symDur * 1.1;
-  const callPauseDur = callPattern.noteDur ? callNoteDur * 0.35 : symDur * 0.4;
-  for (let r = 0; r < callRepeats; r++) {
-    callPattern.freqs.forEach((f) => push(f, callNoteDur, "ruf"));
-    push(null, callPauseDur, "pause");
+  // Manche Rufmuster (z. B. F07) haben stattdessen eine feste, ungleichmäßige
+  // Ton-Folge mit je eigener Dauer (callPattern.sequence) — z. B. eine echte
+  // FSK-Callup-Sequenz mit dokumentierten Einzeldauern statt gleich langer Noten.
+  if (callPattern.sequence) {
+    for (let r = 0; r < callRepeats; r++) {
+      callPattern.sequence.forEach((ev) => push(ev.freq, ev.dur, "ruf"));
+      push(null, symDur * 0.8, "pause");
+    }
+  } else {
+    const callNoteDur = callPattern.noteDur || symDur * 1.1;
+    const callPauseDur = callPattern.noteDur ? callNoteDur * 0.35 : symDur * 0.4;
+    for (let r = 0; r < callRepeats; r++) {
+      callPattern.freqs.forEach((f) => push(f, callNoteDur, "ruf"));
+      push(null, callPauseDur, "pause");
+    }
   }
   push(null, symDur * 2, "pause");
 
   // 2. Preamble: station ID (3 digits)
-  id3.split("").forEach((ch) => push(digitFreq(style, +ch), symDur, "id"));
+  id3.split("").forEach((ch) => pushDigitEvent(push, style, +ch, symDur, "id"));
   push(null, symDur * 1, "pause");
 
   // 3. Group count (2-digit, zero-padded)
@@ -199,7 +286,7 @@ function buildSequence(style, baud, id3, msgDigits, callPattern, callRepeats) {
   String(groupCount)
     .padStart(2, "0")
     .split("")
-    .forEach((ch) => push(digitFreq(style, +ch), symDur, "count"));
+    .forEach((ch) => pushDigitEvent(push, style, +ch, symDur, "count"));
   push(null, symDur * 2, "pause");
 
   // 4. Data: message digits, sync tone every N (style-dependent)
@@ -208,13 +295,13 @@ function buildSequence(style, baud, id3, msgDigits, callPattern, callRepeats) {
     if (style.syncEvery && count > 0 && count % style.syncEvery === 0) {
       push(style.sync, symDur, "sync");
     }
-    push(digitFreq(style, +ch), symDur, "data");
+    pushDigitEvent(push, style, +ch, symDur, "data");
     count++;
   });
   push(null, symDur * 1.5, "pause");
 
   // 5. Outro: triple-zero (classic "null message / end" marker)
-  for (let i = 0; i < 3; i++) push(digitFreq(style, 0), symDur, "outro");
+  for (let i = 0; i < 3; i++) pushDigitEvent(push, style, 0, symDur, "outro");
 
   return events;
 }
@@ -324,7 +411,7 @@ function otpDecode(cipherDigits, padDigits) {
 
 if (typeof module !== "undefined") {
   module.exports = {
-    SAMPLE_RATE, STYLES, CALL_PATTERNS, digitFreq, resolveStyle, dspLimitWarning, buildSequence, goertzel,
+    SAMPLE_RATE, STYLES, CALL_PATTERNS, digitFreq, digitBits, pushDigitEvent, resolveStyle, dspLimitWarning, buildSequence, goertzel,
     OTP_ALPHABET, textToDigits, digitsToText, generatePad, otpEncode, otpDecode,
   };
 }
